@@ -13,6 +13,7 @@ from sqlmodel import Field as SQLField
 from sqlmodel import Session, SQLModel, create_engine, select
 
 from . import settings
+from .places import Place, PositionFix
 from .tariff.model import Tariff
 from .tariff.presets import EDA_TRI_SEMANAL
 
@@ -86,6 +87,16 @@ class BatterySampleRow(SQLModel, table=True):
     at: datetime = SQLField(index=True)
     soc: float
     charging: bool
+
+
+class PlaceRow(SQLModel, table=True):
+    id: int | None = SQLField(default=None, primary_key=True)
+    name: str
+    kind: str
+    lat: float
+    lon: float
+    radius_m: int = 150
+    price_eur_kwh: float | None = None
 
 
 _engine = None
@@ -258,3 +269,44 @@ def battery_samples(since: datetime) -> list[BatterySample]:
         q = select(BatterySampleRow).where(BatterySampleRow.at >= _utc(since)).order_by(BatterySampleRow.at)
         rows = s.exec(q).all()
         return [BatterySample(at=_utc(r.at), soc=r.soc, charging=r.charging) for r in rows]
+
+
+def _place(row: PlaceRow) -> Place:
+    return Place(**row.model_dump())
+
+
+def list_places() -> list[Place]:
+    with _session() as s:
+        return [_place(r) for r in s.exec(select(PlaceRow).order_by(PlaceRow.id)).all()]
+
+
+def save_place(p: Place) -> Place:
+    """Insert (no id) or update; at most one home and one work place."""
+    with _session() as s:
+        if p.kind in ("home", "work"):
+            clash = s.exec(select(PlaceRow).where(PlaceRow.kind == p.kind, PlaceRow.id != p.id)).first()
+            if clash is not None:
+                raise ValueError("Já existe um local de casa" if p.kind == "home" else "Já existe um local de trabalho")
+        row = PlaceRow(**p.model_dump())
+        row = s.merge(row)
+        s.commit()
+        s.refresh(row)  # commit expires the instance
+        return _place(row)
+
+
+def delete_place(place_id: int) -> bool:
+    with _session() as s:
+        row = s.get(PlaceRow, place_id)
+        if row is None:
+            return False
+        s.delete(row)
+        s.commit()
+        return True
+
+
+def get_position_fix() -> PositionFix | None:
+    return _get_state("position_fix", PositionFix)
+
+
+def set_position_fix(fix: PositionFix | None) -> None:
+    _set_state("position_fix", fix)

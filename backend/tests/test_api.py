@@ -410,3 +410,45 @@ def test_control_command_activity_is_tagged_control(logged):
     logged.post("/api/control/horn")
     latest = logged.get("/api/activity").json()[0]
     assert (latest["kind"], latest["source"]) == ("error", "control")
+
+
+PLACE = {"name": "Casa", "kind": "home", "lat": 10.0, "lon": 20.0}
+
+
+def test_places_require_login(client):
+    assert client.get("/api/places").status_code == 401
+
+
+def test_places_crud(logged):
+    assert logged.get("/api/places").json() == []
+    home = logged.post("/api/places", json=PLACE).json()
+    assert home["id"] and home["radius_m"] == 150 and home["price_eur_kwh"] is None
+    other = logged.post(
+        "/api/places", json={"name": "Ginásio", "kind": "other", "lat": 11, "lon": 20, "price_eur_kwh": 0.15}
+    ).json()
+    assert [p["id"] for p in logged.get("/api/places").json()] == [home["id"], other["id"]]
+    r = logged.put(f"/api/places/{home['id']}", json={**PLACE, "name": "Casa nova", "radius_m": 300})
+    assert r.status_code == 200 and r.json()["name"] == "Casa nova" and r.json()["id"] == home["id"]
+    assert logged.put("/api/places/999", json=PLACE).status_code == 404
+    assert logged.delete(f"/api/places/{other['id']}").status_code == 200
+    assert logged.delete(f"/api/places/{other['id']}").status_code == 404
+    assert len(logged.get("/api/places").json()) == 1
+
+
+def test_places_validation_and_second_home_422_pt(logged):
+    r = logged.post("/api/places", json={**PLACE, "radius_m": 5})
+    assert r.status_code == 422 and "Raio" in r.json()["detail"]
+    r = logged.post("/api/places", json={**PLACE, "price_eur_kwh": 0.2})
+    assert r.status_code == 422 and "Preço" in r.json()["detail"]
+    assert logged.post("/api/places", json=PLACE).status_code == 200
+    r = logged.post("/api/places", json={**PLACE, "name": "Outra"})
+    assert r.status_code == 422 and "casa" in r.json()["detail"]
+
+
+def test_places_from_car(logged):
+    r = logged.post("/api/places/from-car", json={"name": "Trabalho", "kind": "work"})
+    assert r.status_code == 409 and r.json()["detail"] == "Posição do carro desconhecida"
+    store.set_position_fix(store.PositionFix(lat=10.5, lon=20.5, at=datetime.now(timezone.utc), mileage_km=1.0))
+    r = logged.post("/api/places/from-car", json={"name": "Trabalho", "kind": "work"})
+    assert r.status_code == 200
+    assert (r.json()["lat"], r.json()["lon"], r.json()["kind"]) == (10.5, 20.5, "work")
