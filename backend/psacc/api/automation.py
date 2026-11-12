@@ -17,10 +17,16 @@ class AutomationIn(BaseModel):
     enabled: bool
     offset_min: int
     battery_limit: int
+    battery_limit_enabled: bool = True
 
 
 def _automation(cfg: AppConfig) -> dict:
-    return {"enabled": cfg.automation_enabled, "offset_min": cfg.offset_min, "battery_limit": cfg.battery_limit}
+    return {
+        "enabled": cfg.automation_enabled,
+        "battery_limit_enabled": cfg.battery_limit_enabled,
+        "offset_min": cfg.offset_min,
+        "battery_limit": cfg.battery_limit,
+    }
 
 
 def _tick_current(app: FastAPI) -> None:
@@ -47,6 +53,7 @@ def put_automation(body: AutomationIn, request: Request, background: BackgroundT
             {
                 **current.model_dump(),
                 "automation_enabled": body.enabled,
+                "battery_limit_enabled": body.battery_limit_enabled,
                 "offset_min": body.offset_min,
                 "battery_limit": body.battery_limit,
             }

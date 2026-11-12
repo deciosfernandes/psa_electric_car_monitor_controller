@@ -21,9 +21,10 @@ Personal web app to monitor and control a PSA/Stellantis electric car (tested wi
   - merges back-to-back off-peak windows (e.g. Saturday 23:00 → Monday 07:00) with no commands at midnight;
   - verifies every command, retries, and alerts on failure.
 - **Location-aware automation** — named places (Casa/home, Trabalho/work, other; radius 25–2000 m, default 150 m).
-  Tariff rules apply only at home; at work the car is charged once per plug-in (free, battery limit ignored);
-  nothing is deferred elsewhere, and "Charge now" works everywhere. A position older than 60 min is only trusted
-  while the odometer shows the car has not moved.
+  Tariff rules apply only at home; the battery limit (default 80 %, controlled by its own switch) is enforced everywhere
+  whenever the car is charging, even with tariff automations disabled; at work the car is charged once per plug-in below
+  the limit; outside home "defer" is sent only to enforce the limit; and "Charge now" works everywhere. A position older
+  than 60 min is only trusted while the odometer shows the car has not moved.
 - **Charges (Cargas)** — charge sessions with energy and cost: home charges are split per tariff period, work
   charges are free, other places use their own €/kWh price. Partial sessions (already charging when first seen)
   are flagged.

@@ -25,6 +25,7 @@ logger = logging.getLogger(__name__)
 
 class AppConfig(BaseModel):
     automation_enabled: bool = True
+    battery_limit_enabled: bool = True
     offset_min: int = Field(10, ge=0, le=60)
     battery_limit: int = Field(80, ge=50, le=100)
     discord_webhook: str | None = None

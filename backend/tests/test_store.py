@@ -23,6 +23,7 @@ def test_config_defaults():
     assert cfg.offset_min == 10
     assert cfg.battery_limit == 80
     assert cfg.automation_enabled is True
+    assert cfg.battery_limit_enabled is True
     assert cfg.session_secret
     assert store.get_config().session_secret == cfg.session_secret
 

@@ -7,7 +7,7 @@ ends with the next verified command, and survives restarts via ``LastCommand.ale
 
 Each evaluated snapshot also updates the stored position fix and locates the car (``last_where``,
 ``last_place``). The tariff rules apply only at Casa; at Trabalho "charge" is sent once per plug-in episode
-(``store.WorkEpisode``), and a "defer" is never sent, nor re-sent by a retry, outside Casa.
+(``store.WorkEpisode``), and outside Casa "defer" is sent only to enforce the battery limit.
 """
 
 import logging
@@ -82,6 +82,7 @@ class _Round:
     alerted: bool
     manual: bool = False  # started by manual_charge() with automation off: not cancelled by "Automação desligada"
     work: bool = False  # the once-per-episode charge at Trabalho
+    limit: int | None = None  # set on a "defer" that enforces the battery limit (this %): allowed anywhere
     program_hour: tuple[int, int] | None = None
     attempts: int = 0
     phase: Literal["verify", "retry"] = "verify"
@@ -298,11 +299,12 @@ class Engine:
             self._round = None
         if decision.mode is None:
             # unknown car state keeps the round going; only unplugging or switching automation off ends it
-            # (an unknown position too, except for a defer: never sent outside Casa)
+            # (an unknown position too, except for a limit defer: allowed anywhere)
             if self._round is not None and (
                 car.plugged is False
-                or (not cfg.automation_enabled and not self._round.manual)
-                or (self._round.mode == "defer" and where != "home")
+                or (not cfg.automation_enabled and not self._round.manual and not self._round.limit)
+                or (not cfg.battery_limit_enabled and self._round.limit is not None)
+                or (self._round.mode == "defer" and where != "home" and not self._round.limit)
             ):
                 self._cancel_round()
             return
@@ -374,7 +376,12 @@ class Engine:
     ) -> None:
         # the alert flag is cleared on every verified success, so carrying it over keeps one alert per episode
         self._round = _Round(
-            mode=decision.mode, reason=decision.reason, alerted=bool(last and last.alerted), manual=manual, work=work
+            mode=decision.mode,
+            reason=decision.reason,
+            alerted=bool(last and last.alerted),
+            manual=manual,
+            work=work,
+            limit=decision.limit,
         )
         try:
             self._attempt(self._round)
@@ -434,7 +441,7 @@ class Engine:
         elif r.phase == "verify":
             logger.warning("%s not applied after attempt %d", r.mode, r.attempts)
             self._retry_later(r)
-        elif r.mode == "defer" and self.last_where != "home":
+        elif r.mode == "defer" and not r.limit and self.last_where != "home":
             logger.info("car no longer known to be at Casa, dropping pending defer")
             self._round = None
         elif r.attempts < MAX_ATTEMPTS:
@@ -458,11 +465,18 @@ class Engine:
         if r.alerted:
             logger.warning("%s still failing after %d attempts (already alerted)", r.mode, r.attempts)
             return
-        what = "iniciar a carga no Trabalho" if r.work else f"{_verb(r.mode)} a carga diferida"
+        if r.limit is not None:
+            what = f"parar a carga no limite de {r.limit} %"
+        elif r.work:
+            what = "iniciar a carga no Trabalho"
+        else:
+            what = f"{_verb(r.mode)} a carga diferida"
         store.log_activity("error", f"Não consegui {what} após {r.attempts} tentativas ({r.reason})", at=self._clock())
         r.alerted = True
         self._persist(r, verified=False)
-        if r.work:
+        if r.limit is not None:
+            text = f"⚠️ PSACC: não consegui parar a carga no limite de {r.limit} %."
+        elif r.work:
             text = "⚠️ PSACC: não consegui iniciar a carga no Trabalho."
         elif r.mode == "charge":
             text = f"⚠️ PSACC: não consegui iniciar a carga no vazio ({r.reason})."

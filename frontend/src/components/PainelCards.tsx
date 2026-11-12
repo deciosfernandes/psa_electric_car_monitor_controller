@@ -137,7 +137,9 @@ export function AutomationCard({
               Próximo: {next_event ? <b>{nextEventText(next_event.at, next_event.action)}</b> : <span className="text-muted">sem eventos previstos</span>}
             </div>
           )}
-          <div className="mt-1 text-xs text-muted">desvio {automation.offset_min} min · fora de Casa: sem comandos</div>
+          <div className="mt-1 text-xs text-muted">
+            desvio {automation.offset_min} min · {automation.battery_limit_enabled === false ? 'fora de Casa: sem comandos' : `fora de Casa: só o limite de ${automation.battery_limit} %`}
+          </div>
           {awayDeferred && <div className="mt-1 text-xs font-semibold">Programa diferido ativo no carro</div>}
         </>
       )}
