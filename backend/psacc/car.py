@@ -1,6 +1,6 @@
 import logging
 from copy import copy
-from .car_status import CarStatus
+from .psa.models import VehicleStatus
 from .car_model_repository import CarModelRepository
 
 logger = logging.getLogger(__name__)
@@ -20,7 +20,7 @@ class Car:
         self.vehicle_id = vehicle_id
         self.label = label
         self.brand = brand
-        self._status = None
+        self.status: VehicleStatus | None = None
         self.battery_power = battery_power or model.battery_power
         self.fuel_capacity = fuel_capacity or model.fuel_capacity
         self.max_elec_consumption = max_elec_consumption or model.max_elec_consumption  # kwh/100Km
@@ -56,22 +56,11 @@ class Car:
 
     def to_dict(self):
         car_dict = copy(self.__dict__)
-        car_dict.pop("_status")
+        car_dict.pop("status")
         return car_dict
 
     def __str__(self):
         return str(self.to_dict())
-
-    @property
-    def status(self) -> CarStatus:
-        return self._status
-
-    @status.setter
-    def status(self, value: CarStatus):
-        self._status = value
-        if self._status is not None and self.status.__class__ != CarStatus:
-            self._status.__class__ = CarStatus
-            self._status.correct(self.is_electric())
 
     def get_charge_speed(self, diff_elvel, duration_in_sec) -> float:
         duration_in_hour = duration_in_sec / 3600

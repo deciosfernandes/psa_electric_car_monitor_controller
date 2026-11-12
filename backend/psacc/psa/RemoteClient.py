@@ -1,23 +1,20 @@
 import json
 import logging
 import threading
-from datetime import datetime
+from datetime import datetime, timezone
 from os import environ
 from typing import Optional
-import time
 
 import paho.mqtt.client as mqtt
 from requests import RequestException
 
 from psacc.car import Cars
 from psacc.psa.AccountInformation import AccountInformation
-from psacc.psa.connected_car_api.models.doors_state import DoorsState
 from psacc.psa.RemoteCredentials import RemoteCredentials
-from psacc.psa.constants import INPROGRESS, DEFAULT_PRECONDITIONING_PROGRAM, IMMEDIATE_CHARGE, \
-    DELAYED_CHARGE, REMOTE_URL
+from psacc.psa.constants import DEFAULT_PRECONDITIONING_PROGRAM, DELAYED_CHARGE, REMOTE_URL
 from psacc.psa.mqtt_request import MQTTRequest
 from psacc.psa.oauth import OpenIdCredentialManager
-from psacc.utils import RateLimitException, rate_limit, parse_hour, TIMEOUT_IN_S
+from psacc.utils import RateLimitException, rate_limit, TIMEOUT_IN_S
 from psacc.psa.otp.otp import ConfigException, save_otp, load_otp
 
 logger = logging.getLogger(__name__)
@@ -47,6 +44,14 @@ class RemoteException(Exception):
     pass
 
 
+def parse_event_date(value) -> datetime:
+    """UTC timestamp of an mqtt event ('2022-03-30T12:00:52Z'), now when missing or malformed."""
+    try:
+        return datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    except (TypeError, ValueError):
+        return datetime.now(timezone.utc)
+
+
 class RemoteClient:
 
     def __init__(self, account_info: AccountInformation, vehicles_list: Cars, manager: OpenIdCredentialManager,
@@ -56,6 +61,7 @@ class RemoteClient:
         self.manager = manager
         self.precond_programs = {}
         self.lock_state = {}
+        self.lock_state_at: dict[str, datetime] = {}  # when mqtt last reported lock_state (UTC)
         self.account_info = account_info
         self.headers = {
             "x-introspect-realm": self.account_info.realm,
@@ -94,7 +100,6 @@ class RemoteClient:
         try:
             logger.info("mqtt msg received: %s %s", msg.topic, msg.payload)
             data = json.loads(msg.payload)
-            charge_info = None
             if msg.topic.startswith(MQTT_RESP_TOPIC):
                 if "return_code" not in data:
                     logger.debug("mqtt msg hasn't return code")
@@ -110,12 +115,10 @@ class RemoteClient:
                 elif data["return_code"] != "0":
                     logger.error('mqtt error %s : %s', data["return_code"], data.get("reason", "?"))
             elif msg.topic.startswith(MQTT_EVENT_TOPIC):
-                charge_info = data["charging_state"]
                 programs = data["precond_state"].get("programs", None)
                 if programs:
                     self.precond_programs[data["vin"]] = data["precond_state"]["programs"]
                 self._store_lock_state(data)
-            self._fix_not_updated_api(charge_info, data["vin"])
         except KeyError:
             logger.exception("on_mqtt_message:")
 
@@ -129,7 +132,7 @@ class RemoteClient:
             return
         vin = data["vin"]
         self.lock_state[vin] = lock_state
-        self.apply_lock_state(self.vehicles_list.get_car_by_vin(vin))
+        self.lock_state_at[vin] = parse_event_date(data.get("date"))
 
     @staticmethod
     def _decode_lock_state(locking_state):
@@ -137,34 +140,6 @@ class RemoteClient:
         if lock_state is None:
             logger.warning("unknown doors_locking_state %s, please report it on github", locking_state)
         return lock_state
-
-    def apply_lock_state(self, car):
-        """Overwrite car.status's doors lock state with the last one seen on mqtt.
-
-        mqtt pushes changes live; the rest api is polled every ~2 min and on some cars never
-        reports lockedState at all, so mqtt takes precedence whenever we have a value for it.
-        """
-        if car is None or car.status is None:
-            return
-        lock_state = self.lock_state.get(car.vin)
-        if lock_state is None:
-            return
-        if car.status.doors_state is None:
-            car.status.doors_state = DoorsState()
-        car.status.doors_state.locked_state = [lock_state]
-        logger.debug("lock state of %s set from mqtt: %s", car.vin, lock_state)
-
-    def _fix_not_updated_api(self, charge_info, vin):
-        if charge_info is not None and (charge_info.get('remaining_time', 0) != 0 or charge_info.get('rate', 0) != 0):
-            try:
-                car = self.vehicles_list.get_car_by_vin(vin=vin)
-                if car and car.status.get_energy('Electric').charging.status != INPROGRESS:
-                    # fix a psa server bug where charge beginning without status api being properly updated
-                    logger.warning("charge begin but API isn't updated")
-                    time.sleep(60)
-                    self.wakeup(vin)
-            except (IndexError, AttributeError, RateLimitException):
-                logger.exception("on_mqtt_message:")
 
     def start(self):
         if self.load_otp():
@@ -205,8 +180,7 @@ class RemoteClient:
     def veh_charge_request(self, vin, hour, minute, charge_type):
         msg = self.mqtt_request(vin, {"program": {"hour": hour, "minute": minute}, "type": charge_type}, "/VehCharge")
         logger.info("veh_charge_request: %s", msg)
-        self.publish(msg)
-        return msg
+        return self.publish(msg)
 
     def publish(self, mqtt_request: MQTTRequest, store=True) -> bool:
         if not self._refresh_remote_token():
@@ -316,20 +290,19 @@ class RemoteClient:
     def horn(self, vin, count):
         msg = self.mqtt_request(vin, {"nb_horn": count, "action": "activate"}, "/Horn")
         logger.info(msg)
-        self.mqtt_client.publish(msg)
+        return self.publish(msg)
 
     def lights(self, vin, duration: int):
         msg = self.mqtt_request(vin, {"action": "activate", "duration": duration}, "/Lights")
         logger.info(msg)
-        self.publish(msg)
+        return self.publish(msg)
 
     @rate_limit(6, 60 * 20)
     def wakeup(self, vin):
         logger.info("ask wakeup to %s", vin)
         msg = self.mqtt_request(vin, {"action": "state"}, "/VehCharge/state")
         logger.info(msg)
-        self.publish(msg)
-        return True
+        return self.publish(msg)
 
     def lock_door(self, vin, lock: bool):
         if lock:
@@ -339,8 +312,7 @@ class RemoteClient:
 
         msg = self.mqtt_request(vin, {"action": value}, "/Doors")
         logger.info(msg)
-        self.publish(msg)
-        return True
+        return self.publish(msg)
 
     def preconditioning(self, vin, activate: bool):
         if activate:
@@ -353,8 +325,7 @@ class RemoteClient:
             programs = DEFAULT_PRECONDITIONING_PROGRAM
         msg = self.mqtt_request(vin, {"asap": value, "programs": programs}, "/ThermalPrecond")
         logger.info("Preconditioning: %s", msg)
-        self.publish(msg)
-        return True
+        return self.publish(msg)
 
     def load_otp(self, force_new=False):
         otp_session = load_otp()
@@ -364,24 +335,5 @@ class RemoteClient:
         self.otp = otp_session
         return True
 
-    def change_charge_hour(self, vin, hour, miinute):
-        self.veh_charge_request(vin, hour, miinute, DELAYED_CHARGE)
-        return True
-
-    def charge_now(self, vin, now):
-        if now:
-            charge_type = IMMEDIATE_CHARGE
-        else:
-            charge_type = DELAYED_CHARGE
-        hour, minute = self.get_charge_hour(vin)
-        res = self.veh_charge_request(vin, hour, minute, charge_type)
-        logger.info("charge_now: %s", res)
-        return True
-
-    def get_charge_hour(self, vin):
-        hour_str = self.vehicles_list.get_car_by_vin(vin).status.get_energy('Electric').charging.next_delayed_time
-        try:
-            return parse_hour(hour_str)[:2]
-        except IndexError:
-            logger.exception("Can't get charge hour: %s", hour_str)
-            return None
+    def change_charge_hour(self, vin, hour, minute):
+        return self.veh_charge_request(vin, hour, minute, DELAYED_CHARGE)

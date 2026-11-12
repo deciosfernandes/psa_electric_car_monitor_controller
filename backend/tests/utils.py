@@ -1,10 +1,10 @@
 from unittest.mock import MagicMock
 
 from psacc.psa.RemoteClient import RemoteClient
-from psacc.psa.connected_car_api import Vehicles
+from psacc.car import Cars
 
 
 def get_rc() -> RemoteClient:
     account_info = MagicMock()
     account_info.realm = ""
-    return RemoteClient(account_info, Vehicles, None, None)
+    return RemoteClient(account_info, Cars(), None, None)

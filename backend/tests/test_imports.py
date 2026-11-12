@@ -7,3 +7,4 @@ def test_no_legacy_imports():
     src = "\n".join(p.read_text(encoding="utf-8") for p in pathlib.Path("psacc").rglob("*.py"))
     assert "psa_car_controller" not in src
     assert "abrp" not in src.lower() and "ecomix" not in src.lower()
+    assert "connected_car_api" not in src

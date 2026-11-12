@@ -1,12 +1,7 @@
-from unittest.mock import MagicMock, patch
-
-from psacc.psa.connected_car_api import Vehicles, ApiClient
-from psacc.psa.connected_car_api.models.doors_state import DoorsState
-from psacc.psa.constants import DISCONNECTED
-from psacc.car import Car, Cars
-from tests.data.car_status import ELECTRIC_CAR_STATUS
-
 import unittest
+from datetime import datetime, timezone
+
+from psacc.car import Car, Cars
 
 from paho.mqtt.client import MQTTMessage
 
@@ -34,21 +29,6 @@ message_without_charge_info = b'{"date":"2022-03-30T13:18:56Z","etat_res_elec":5
 
 class TestUnit(unittest.TestCase):
 
-    @patch('time.sleep', return_value=None)
-    def test_fix_not_updated_api(self, patched_time_sleep):
-        # GIVEN
-        remote_client = get_rc()
-        vin = "myvin"
-        car = Car("a", "b", "c")
-        car.status = ApiClient()._ApiClient__deserialize(ELECTRIC_CAR_STATUS, "Status")
-        car.status.get_energy('Electric').charging.status = DISCONNECTED
-        remote_client.vehicles_list.get_car_by_vin = MagicMock(return_value=car)
-        remote_client.wakeup = MagicMock()
-        # WHEN
-        remote_client._fix_not_updated_api({'remaining_time': 1}, vin)
-        # THEN
-        remote_client.wakeup.assert_called_once_with(vin)
-
     def test_message_without_precond(self):
         remote_client = get_rc()
         msg = MQTTMessage(topic=MQTT_EVENT_TOPIC.encode("utf-8"))
@@ -73,9 +53,7 @@ class TestMqttLockState(unittest.TestCase):
 
     def setUp(self):
         self.remote_client = get_rc()
-        self.car = Car(self.VIN, "vehicle_id", "Opel")
-        self.car.status = ApiClient()._ApiClient__deserialize(ELECTRIC_CAR_STATUS, "Status")
-        self.remote_client.vehicles_list = Cars([self.car])
+        self.remote_client.vehicles_list = Cars([Car(self.VIN, "vehicle_id", "Opel")])
 
     def _send_event(self, locking_state):
         msg = MQTTMessage(topic=(MQTT_EVENT_TOPIC + self.VIN).encode("utf-8"))
@@ -85,17 +63,17 @@ class TestMqttLockState(unittest.TestCase):
     def test_locked(self):
         self._send_event(1)
         self.assertEqual("Locked", self.remote_client.lock_state[self.VIN])
-        self.assertEqual(["Locked"], self.car.status.doors_state.locked_state)
+        self.assertEqual(datetime(2026, 8, 30, 22, 35, 44, tzinfo=timezone.utc),
+                         self.remote_client.lock_state_at[self.VIN])
 
     def test_unlocked(self):
         self._send_event(3)
         self.assertEqual("Unlocked", self.remote_client.lock_state[self.VIN])
-        self.assertEqual(["Unlocked"], self.car.status.doors_state.locked_state)
 
     def test_unknown_value_is_not_guessed(self):
         self._send_event(2)
         self.assertNotIn(self.VIN, self.remote_client.lock_state)
-        self.assertIsNone(self.car.status.doors_state)
+        self.assertNotIn(self.VIN, self.remote_client.lock_state_at)
 
     def test_null_doors_state(self):
         # the key can be present and null, which must not raise out of the mqtt callback
@@ -111,9 +89,3 @@ class TestMqttLockState(unittest.TestCase):
                       % self.VIN.encode("utf-8")
         self.remote_client._on_mqtt_message(None, None, msg)
         self.assertEqual({}, self.remote_client.lock_state)
-
-    def test_mqtt_overwrites_api_value(self):
-        # mqtt is live, the rest api lags behind it, so mqtt wins on conflict
-        self.car.status.doors_state = DoorsState(locked_state=["Locked"])
-        self._send_event(3)
-        self.assertEqual(["Unlocked"], self.car.status.doors_state.locked_state)

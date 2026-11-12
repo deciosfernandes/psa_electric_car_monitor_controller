@@ -12,9 +12,6 @@ from oauth2_client.credentials_manager import CredentialManager, OAuthError, Ser
 from requests import Response, RequestException
 
 from psacc.utils import rate_limit, TIMEOUT_IN_S
-from psacc.psa import connected_car_api
-from psacc.psa.connected_car_api import ApiClient
-from psacc.psa.connected_car_api.rest import ApiException
 
 logger = logging.getLogger(__name__)
 
@@ -105,44 +102,3 @@ class OpenIdCredentialManager(CredentialManager):
         if "timeout" not in kwargs:
             kwargs["timeout"] = TIMEOUT_IN_S
         return super().request(method, url, **kwargs)
-
-
-class Oauth2PSACCApiConfig(connected_car_api.Configuration):
-    def __init__(self):
-        super().__init__()
-        self.refresh_callback = lambda: True
-
-    def set_refresh_callback(self, callback):
-        self.refresh_callback = callback
-
-
-class OauthAPIClient(ApiClient):
-    # pylint: disable=no-member,too-many-arguments,too-many-positional-arguments
-    def call_api(self, resource_path, method,
-                 path_params=None, query_params=None, header_params=None,
-                 body=None, post_params=None, files=None,
-                 response_type=None, auth_settings=None, async_req=None,
-                 _return_http_data_only=None, collection_formats=None,
-                 _preload_content=True, _request_timeout=None):
-        _request_timeout = _request_timeout or TIMEOUT_IN_S
-        for attempt in range(0, 2):
-            try:
-                if not async_req:
-                    return self._ApiClient__call_api(resource_path, method,
-                                                     path_params, query_params, header_params,
-                                                     body, post_params, files,
-                                                     response_type, auth_settings,
-                                                     _return_http_data_only, collection_formats,
-                                                     _preload_content, _request_timeout)
-                return self.pool.apply_async(self.__call_api, (resource_path,
-                                                               method, path_params, query_params,
-                                                               header_params, body,
-                                                               post_params, files,
-                                                               response_type, auth_settings,
-                                                               _return_http_data_only,
-                                                               collection_formats,
-                                                               _preload_content, _request_timeout))
-            except ApiException as e:
-                if attempt == 1 or e.reason != 'Unauthorized' or not self.configuration.refresh_callback():
-                    raise e
-            return None
