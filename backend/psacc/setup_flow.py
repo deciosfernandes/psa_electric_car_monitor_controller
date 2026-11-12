@@ -77,6 +77,8 @@ def load_gateway() -> PsaGateway | None:
     if data is None or not cfg.vin:
         return None
     client = PSAClient.from_dict(data)
+    client.manager.refresh_callbacks.append(lambda: store.save_psa(client.to_dict()))
+    client.remote_client.remoteCredentials.update_callbacks.append(lambda: store.save_psa(client.to_dict()))
     try:
         if not client.remote_client.start():
             logger.warning("MQTT did not connect at startup")

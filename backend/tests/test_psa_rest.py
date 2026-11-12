@@ -37,6 +37,13 @@ def test_rest_does_not_retry_twice():
     assert session.get.call_count == 2
 
 
+def test_rest_retries_once_on_500(monkeypatch):
+    monkeypatch.setattr("time.sleep", lambda _: None)
+    rest, _, session = make_rest(response(500), response(200, {"ok": 2}))
+    assert rest.get("/status") == {"ok": 2}
+    assert session.get.call_count == 2
+
+
 def test_vehicles_and_status():
     rest, _, _ = make_rest(
         response(200, {"_embedded": {"vehicles": [{"id": "vid", "vin": "VIN", "brand": "Peugeot", "label": "e-208",

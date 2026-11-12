@@ -76,6 +76,19 @@ class TestRefreshRemoteToken(unittest.TestCase):
         self.assertTrue(refreshed)
         remote_client.manager.refresh_token_now.assert_not_called()
 
+    def test_unforced_refresh_skips_when_access_token_is_fresh(self):
+        # GIVEN a remote client whose token was just refreshed
+        remote_client = get_remote_client()
+        remote_client._refresh_remote_token()
+        remote_client.manager.refresh_token_now.reset_mock()
+
+        # WHEN a second unforced refresh is requested
+        refreshed = remote_client._refresh_remote_token()
+
+        # THEN no refresh is performed (TTL respected)
+        self.assertTrue(refreshed)
+        remote_client.manager.refresh_token_now.assert_not_called()
+
     def test_keepalive_period_is_well_under_token_lifetime(self):
         # Regression test for Sentry issue 150805222 / the daily invalid_grant: the remote
         # refresh token lives ~24h and __keep_mqtt is the only periodic refresh on an idle

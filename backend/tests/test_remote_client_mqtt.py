@@ -42,7 +42,7 @@ class FakePaho:
     def _connack(self):
         self.connected = True
         self.events.append("connack")
-        self.on_connect(self, None, 0, None)
+        self.on_connect(self, None, {}, 0)
 
     def is_connected(self):
         return self.connected

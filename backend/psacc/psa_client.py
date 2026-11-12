@@ -46,6 +46,16 @@ class PSAClient:
                                           self.manager,
                                           RemoteCredentials(remote_refresh_token))
 
+        def _persist_tokens():
+            try:
+                from psacc import store
+                store.save_psa(self.to_dict())
+            except Exception:
+                logger.debug("could not auto-persist psa tokens", exc_info=True)
+
+        self.manager.refresh_callbacks.append(_persist_tokens)
+        self.remote_client.remoteCredentials.update_callbacks.append(_persist_tokens)
+
     def get_app_name(self):
         return realm_info[self.realm]['app_name']
 

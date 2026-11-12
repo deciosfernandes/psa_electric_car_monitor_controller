@@ -166,8 +166,14 @@ def show(gw: PsaGateway, label: str, report: dict, wake: bool = True) -> None:
 
 def login() -> None:
     if store.get_psa():
-        print("Using stored PSA login.")
-        return
+        try:
+            client = setup_flow._stored_client()
+            if client.manager.ensure_access_token():
+                print("Using stored PSA login.")
+                return
+        except Exception:
+            pass
+        print("Stored PSA login expired. Logging in again...")
     packages = sorted(BRAND)
     app = input(f"App package {packages} [com.psa.mym.mypeugeot]: ").strip() or "com.psa.mym.mypeugeot"
     country = input("Country code [PT]: ").strip().upper() or "PT"
