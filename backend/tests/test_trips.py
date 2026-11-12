@@ -107,3 +107,27 @@ def test_store_trips_roundtrip():
     got = store.trips(10)
     assert len(got) == 1 and got[0].km == 10 and got[0].departed_at == T0
     assert store.trips(10, offset=1) == []
+
+
+def test_mqtt_updates_during_drive_do_not_close_trip():
+    d = TripDetector(46)
+    d.feed(snap(0, 1000), "home", HOME)
+    d.feed(snap(10, 1010, soc=78), "other", None)
+    base = snap(10, 1010, soc=78)
+    pushes = [dataclasses.replace(base, at=T0 + timedelta(minutes=m), soc=77 - m / 10) for m in (15, 25)]
+    assert [d.feed(p, "other", None) for p in pushes] == [None, None]
+    assert d.feed(snap(30, 1025, soc=72), "other", None) is None  # still driving
+    assert d.feed(snap(50, 1025, soc=72), "work", WORK).km == 25
+
+
+def test_soc_end_is_at_arrival_not_after_plugging_in():
+    d = TripDetector(46)
+    t = run(
+        d,
+        [
+            (snap(0, 1000, soc=80), "home", HOME),
+            (snap(20, 1020, soc=70), "work", WORK),
+            (snap(40, 1020, soc=75, charging=True, plugged=True), "work", WORK),
+        ],
+    )[0]
+    assert t.soc_end == 70 and t.kwh == pytest.approx(4.6)

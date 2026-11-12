@@ -49,16 +49,22 @@ class _Point:
 class TripDetector:
     def __init__(self, capacity_kwh: float):
         self.capacity = capacity_kwh
-        self._last_at: datetime | None = None
+        self._last_rest: tuple[datetime, float] | None = None  # (REST timestamp, odometer) of the last consumed one
         self._parked: _Point | None = None  # last snapshot seen without movement
         self._moving = False
         self._last_move: _Point | None = None  # last snapshot where the odometer had advanced
 
     def feed(self, snap: CarSnapshot, where: Where, place: Place | None) -> Trip | None:
+        if snap.mileage_km is None:
+            return None  # unknown odometer is not movement
+        # MQTT-merged snapshots get a new `at` but keep the REST odometer and energy_at: not a fresh reading
+        at = snap.energy_at or snap.at
+        if self._last_rest is not None:
+            last_at, last_km = self._last_rest
+            if at <= last_at and snap.mileage_km == last_km:
+                return None
+        self._last_rest = (at, snap.mileage_km)
         at = snap.at
-        if snap.mileage_km is None or (self._last_at is not None and at <= self._last_at):
-            return None  # unknown odometer is not movement; nothing new from the car
-        self._last_at = at
         pt = _Point(snap, where, place)
         if self._parked is None:
             self._parked = pt
@@ -86,7 +92,7 @@ class TripDetector:
         km = moved.km - start.km
         if km < MIN_KM:
             return None
-        s0, s1 = start.snap.soc, end.snap.soc
+        s0, s1 = start.snap.soc, moved.snap.soc  # soc at arrival: later charging must not hide the drive's use
         kwh = max(0.0, s0 - s1) / 100 * self.capacity if s0 is not None and s1 is not None else 0.0
         return Trip(
             departed_at=start.snap.at,
