@@ -160,7 +160,7 @@ tests/mypeugeot.apk.bz2
 tests/test_charge_control.json
 # rewrite
 .superpowers/
-data/
+/data/
 node_modules/
 .venv/
 !frontend/src/lib/
