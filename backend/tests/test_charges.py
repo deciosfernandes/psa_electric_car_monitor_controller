@@ -34,9 +34,10 @@ def test_session_start_end():
     assert (s.soc_start, s.place_kind, s.place_name, s.partial) == (50, "home", "Casa", False)
     assert s.started_at == T0 + timedelta(minutes=10)
     assert kinds(d.feed(snap(20, 55), "home", HOME)) == ["sample"]
-    assert d.feed(snap(30, 56, charging=False), "home", HOME) == []  # one stop is not enough
+    assert kinds(d.feed(snap(30, 56, charging=False), "home", HOME)) == ["sample"]  # one stop is not enough
     ev = d.feed(snap(40, 56, charging=False), "home", HOME)
-    assert kinds(ev) == ["end"]
+    assert kinds(ev) == ["sample", "end"]
+    ev = ev[1:]
     assert ev[0].session.soc_end == 56 and ev[0].session.ended_at == T0 + timedelta(minutes=40)
     assert d.feed(snap(50, 56, charging=False), "home", HOME) == []
 
@@ -46,7 +47,7 @@ def test_charging_resuming_resets_stop_count():
     d.feed(snap(0, 50), "home", HOME)
     d.feed(snap(10, 51, charging=False), "home", HOME)
     assert kinds(d.feed(snap(20, 52), "home", HOME)) == ["sample"]
-    assert d.feed(snap(30, 52, charging=False), "home", HOME) == []
+    assert kinds(d.feed(snap(30, 52, charging=False), "home", HOME)) == ["sample"]
 
 
 def test_session_started_mid_charge_is_partial():
@@ -72,7 +73,7 @@ def test_unplug_ends_session():
     d.feed(snap(0, 50), "home", HOME)
     d.feed(snap(10, 52), "home", HOME)
     ev = d.feed(snap(20, 52, charging=False, plugged=False), "home", HOME)
-    assert kinds(ev) == ["end"] and ev[0].session.soc_end == 52
+    assert kinds(ev) == ["sample", "end"] and ev[1].session.soc_end == 52
 
 
 def test_stale_energy_ignored():

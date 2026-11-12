@@ -13,7 +13,7 @@ from sqlmodel import Field as SQLField
 from sqlmodel import Session, SQLModel, create_engine, select
 
 from . import settings
-from .history.charges import ChargeSample, ChargeSession
+from .history.charges import ChargeSample, ChargeSession, session_kwh
 from .history.cost import session_cost
 from .places import Place, PositionFix
 from .tariff.model import Tariff
@@ -398,8 +398,17 @@ def charge_sessions(limit: int, offset: int = 0) -> list[ChargeSession]:
         return [_charge_session(r) for r in s.exec(q).all()]
 
 
+def get_charge_session(session_id: int) -> ChargeSession | None:
+    with _session() as s:
+        row = s.get(ChargeSessionRow, session_id)
+        return _charge_session(row) if row else None
+
+
 def add_charge_sample(session_id: int, at: datetime, soc: float, rate_kmh: float | None) -> None:
     with _session() as s:
+        same = select(ChargeSampleRow).where(ChargeSampleRow.session_id == session_id, ChargeSampleRow.at == _utc(at))
+        if s.exec(same).first() is not None:
+            return  # e.g. the first snapshot after a restart repeats the last stored one
         s.add(ChargeSampleRow(session_id=session_id, at=_utc(at), soc=soc, rate_kmh=rate_kmh))
         s.commit()
 
@@ -414,7 +423,7 @@ def recompute_session_cost(c: ChargeSession) -> ChargeSession:
     """The session with kwh and cost filled in from its soc, samples, the tariff and the place's price."""
     cap = get_config().battery_capacity_kwh
     if c.soc_end is not None:
-        c = c.model_copy(update={"kwh": max(0.0, c.soc_end - c.soc_start) / 100 * cap})
+        c = c.model_copy(update={"kwh": session_kwh(c.soc_start, c.soc_end, cap)})
     price = next((p.price_eur_kwh for p in list_places() if p.name == c.place_name and p.kind == "other"), None)
     samples = charge_samples(c.id) if c.id is not None else []
     return c.model_copy(update={"cost_eur": session_cost(c, samples, get_tariff(), cap, price)})

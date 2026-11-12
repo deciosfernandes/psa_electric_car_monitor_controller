@@ -76,3 +76,12 @@ def test_store_roundtrip_and_override(tmp_path, monkeypatch):
     assert out.price_override_eur_kwh == 0.4 and out.cost_eur == pytest.approx(9.2)
     assert store.charge_sessions(10, 0)[0].cost_eur == pytest.approx(9.2)
     assert store.set_session_price(999, 0.4) is None
+
+
+def test_closing_sample_makes_cost_cover_session_kwh():
+    from psacc.history.charges import session_kwh
+
+    samples = SAMPLES + [ChargeSample(session_id=1, at=local(8, 0), soc=75, rate_kmh=0)]
+    s = make(soc_end=75, kwh=session_kwh(20, 75, 46), ended_at=local(8, 0))
+    # 18.4 kWh vazio + (4.6 + 2.3) kWh cheias
+    assert session_cost(s, samples, TARIFF, 46) == pytest.approx(18.4 * 0.10 + 6.9 * 0.20)

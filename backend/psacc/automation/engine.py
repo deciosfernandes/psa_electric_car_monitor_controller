@@ -254,6 +254,8 @@ class Engine:
         if ev.sample is not None and s.id is not None:
             store.add_charge_sample(s.id, ev.sample.at, ev.sample.soc, ev.sample.rate_kmh)
         if ev.kind != "start" and s.id is not None:
+            stored = store.get_charge_session(s.id)  # the user may have set a price since the session opened
+            s.price_override_eur_kwh = stored.price_override_eur_kwh if stored else None
             store.save_charge_session(store.recompute_session_cost(s))
 
     def _evaluate(self, car: CarSnapshot) -> None:

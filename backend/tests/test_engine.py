@@ -743,3 +743,21 @@ def test_engine_records_charge_session_with_location():
     engine.on_status(dataclasses.replace(first, energy_at=thu(19, 10), soc=52.0))
     assert len(store.charge_samples(sessions[0].id)) == 2
     assert store.charge_sessions(10)[0].soc_end == 52.0
+
+
+def test_engine_charge_cost_covers_whole_session_and_keeps_price_override():
+    from psacc.history.charges import session_kwh
+
+    first = snap(plugged=True, charging=True, charge_status="InProgress", soc=50.0, energy_at=thu(19))
+    engine, *_ = make(first)
+    engine.on_status(first)
+    sid = store.charge_sessions(10)[0].id
+    store.set_session_price(sid, 0.5)
+    engine.on_status(dataclasses.replace(first, energy_at=thu(19, 10), soc=52.0))
+    assert store.get_charge_session(sid).price_override_eur_kwh == 0.5
+    for i, mins in enumerate((20, 30)):  # charge finished between polls: soc gained on the first stop snapshot
+        engine.on_status(dataclasses.replace(first, energy_at=thu(19, mins), soc=55.0, charging=False))
+    done = store.get_charge_session(sid)
+    assert done.ended_at is not None and done.soc_end == 55.0
+    assert done.kwh == session_kwh(50, 55, 46) and done.cost_eur == pytest.approx(done.kwh * 0.5)
+    assert store.charge_samples(sid)[-1].soc == 55.0

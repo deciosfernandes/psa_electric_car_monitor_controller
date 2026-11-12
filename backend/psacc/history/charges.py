@@ -70,7 +70,9 @@ class ChargeDetector:
 
         if snap.plugged is False:
             self._stops = 0
-            return self._end(snap.soc, at) if cur is not None else []
+            if cur is None:
+                return []
+            return self._closing_sample(cur, at, snap) + self._end(snap.soc, at)
         if snap.soc is None:
             return []
         if cur is None:
@@ -89,7 +91,9 @@ class ChargeDetector:
             return []
         if snap.charging is False:
             self._stops += 1
-            return self._end(snap.soc, at) if self._stops >= STOPS_TO_END else []
+            cur.soc_end = snap.soc
+            events = self._closing_sample(cur, at, snap)  # soc gained since the last sample counts in the cost
+            return events + self._end(snap.soc, at) if self._stops >= STOPS_TO_END else events
         if snap.charging is None:
             return []
         self._stops = 0
@@ -108,6 +112,9 @@ class ChargeDetector:
             partial=partial,
         )
         return [ChargeEvent("start", self.current), self._sample(self.current, at, snap.soc, snap.charge_rate_kmh)]
+
+    def _closing_sample(self, session: ChargeSession, at: datetime, snap: CarSnapshot) -> list[ChargeEvent]:
+        return [] if snap.soc is None else [self._sample(session, at, snap.soc, snap.charge_rate_kmh)]
 
     @staticmethod
     def _sample(session: ChargeSession, at: datetime, soc: float, rate: float | None) -> ChargeEvent:
