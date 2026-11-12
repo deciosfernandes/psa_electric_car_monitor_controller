@@ -13,6 +13,8 @@ from sqlmodel import Field as SQLField
 from sqlmodel import Session, SQLModel, create_engine, select
 
 from . import settings
+from .history.charges import ChargeSample, ChargeSession
+from .history.cost import session_cost
 from .places import Place, PositionFix
 from .tariff.model import Tariff
 from .tariff.presets import EDA_TRI_SEMANAL
@@ -109,6 +111,28 @@ class PlaceRow(SQLModel, table=True):
     lon: float
     radius_m: int = 150
     price_eur_kwh: float | None = None
+
+
+class ChargeSessionRow(SQLModel, table=True):
+    id: int | None = SQLField(default=None, primary_key=True)
+    started_at: datetime = SQLField(index=True)
+    ended_at: datetime | None = None
+    place_kind: str
+    place_name: str | None = None
+    soc_start: float
+    soc_end: float | None = None
+    kwh: float | None = None
+    cost_eur: float | None = None
+    price_override_eur_kwh: float | None = None
+    partial: bool = False
+
+
+class ChargeSampleRow(SQLModel, table=True):
+    id: int | None = SQLField(default=None, primary_key=True)
+    session_id: int = SQLField(index=True)
+    at: datetime
+    soc: float
+    rate_kmh: float | None = None
 
 
 _engine = None
@@ -342,3 +366,69 @@ def get_work_episode() -> WorkEpisode | None:
 
 def set_work_episode(e: WorkEpisode | None) -> None:
     _set_state("work_episode", e)
+
+
+def _charge_session(row: ChargeSessionRow) -> ChargeSession:
+    d = row.model_dump()
+    d["started_at"] = _utc(row.started_at)
+    d["ended_at"] = _utc(row.ended_at) if row.ended_at else None
+    return ChargeSession(**d)
+
+
+def save_charge_session(c: ChargeSession) -> ChargeSession:
+    """Insert (no id) or update."""
+    with _session() as s:
+        row = s.merge(ChargeSessionRow(**c.model_dump()))
+        s.commit()
+        s.refresh(row)
+        return _charge_session(row)
+
+
+def open_charge_session() -> ChargeSession | None:
+    with _session() as s:
+        q = select(ChargeSessionRow).where(ChargeSessionRow.ended_at.is_(None))
+        row = s.exec(q.order_by(ChargeSessionRow.started_at.desc())).first()
+        return _charge_session(row) if row else None
+
+
+def charge_sessions(limit: int, offset: int = 0) -> list[ChargeSession]:
+    """Newest first."""
+    with _session() as s:
+        q = select(ChargeSessionRow).order_by(ChargeSessionRow.started_at.desc()).offset(offset).limit(limit)
+        return [_charge_session(r) for r in s.exec(q).all()]
+
+
+def add_charge_sample(session_id: int, at: datetime, soc: float, rate_kmh: float | None) -> None:
+    with _session() as s:
+        s.add(ChargeSampleRow(session_id=session_id, at=_utc(at), soc=soc, rate_kmh=rate_kmh))
+        s.commit()
+
+
+def charge_samples(session_id: int) -> list[ChargeSample]:
+    with _session() as s:
+        q = select(ChargeSampleRow).where(ChargeSampleRow.session_id == session_id).order_by(ChargeSampleRow.at)
+        return [ChargeSample(**{**r.model_dump(), "at": _utc(r.at)}) for r in s.exec(q).all()]
+
+
+def recompute_session_cost(c: ChargeSession) -> ChargeSession:
+    """The session with kwh and cost filled in from its soc, samples, the tariff and the place's price."""
+    cap = get_config().battery_capacity_kwh
+    if c.soc_end is not None:
+        c = c.model_copy(update={"kwh": max(0.0, c.soc_end - c.soc_start) / 100 * cap})
+    price = next((p.price_eur_kwh for p in list_places() if p.name == c.place_name and p.kind == "other"), None)
+    samples = charge_samples(c.id) if c.id is not None else []
+    return c.model_copy(update={"cost_eur": session_cost(c, samples, get_tariff(), cap, price)})
+
+
+def set_session_price(session_id: int, eur_kwh: float | None) -> ChargeSession | None:
+    """Set (or clear, with None) the session's EUR/kWh override and recompute its cost."""
+    with _session() as s:
+        row = s.get(ChargeSessionRow, session_id)
+        if row is None:
+            return None
+        row.price_override_eur_kwh = eur_kwh
+        s.add(row)
+        s.commit()
+        s.refresh(row)
+        c = _charge_session(row)
+    return save_charge_session(recompute_session_cost(c))

@@ -731,3 +731,15 @@ def test_engine_records_one_health_sample_per_day():
     gw.snap = snap(battery_health=92.5)
     engine.on_status(gw.snap)
     assert store.health_samples() == [(thu(19).astimezone(TZ).date(), 92.5)]
+
+
+def test_engine_records_charge_session_with_location():
+    first = snap(plugged=True, charging=True, charge_status="InProgress", soc=50.0, energy_at=thu(19))
+    engine, *_ = make(first)
+    engine.on_status(first)
+    sessions = store.charge_sessions(10)
+    assert len(sessions) == 1 and sessions[0].place_kind == engine.last_where
+    assert sessions[0].partial is True and len(store.charge_samples(sessions[0].id)) == 1
+    engine.on_status(dataclasses.replace(first, energy_at=thu(19, 10), soc=52.0))
+    assert len(store.charge_samples(sessions[0].id)) == 2
+    assert store.charge_sessions(10)[0].soc_end == 52.0

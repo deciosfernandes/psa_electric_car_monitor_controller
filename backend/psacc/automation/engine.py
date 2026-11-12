@@ -18,6 +18,7 @@ from typing import Callable, Literal, Protocol
 
 from .. import store
 from ..gateway import CarGateway, CarSnapshot
+from ..history.charges import ChargeDetector, ChargeEvent
 from ..places import Place, Where, locate, update_fix
 from ..settings import TZ
 from ..store import LastCommand, Override, WorkEpisode
@@ -109,6 +110,7 @@ class Engine:
         # where the car was at the last evaluated snapshot (None before the first one): read by other components
         self.last_where: Where | None = None
         self.last_place: Place | None = None
+        self._charges: ChargeDetector | None = None  # built on first use (reads the open session from the store)
         self._closed = False  # set by close(): every entry point becomes a no-op
         self._closing = threading.Event()
         # settle wait outside the lock; True means "closing, stop" (tests inject an instantaneous one)
@@ -136,6 +138,7 @@ class Engine:
                 self._evaluate(snap)
             except Exception:
                 logger.exception("automation status handling failed")
+            self._record_charges(snap)
 
     def manual_charge(self) -> None:
         with self._lock:
@@ -230,6 +233,28 @@ class Engine:
             store.log_activity("info", "Cabo ligado" if snap.plugged else "Cabo desligado", at=self._clock())
             self._replugged = snap.plugged
         self._plugged = snap.plugged
+
+    def _record_charges(self, snap: CarSnapshot) -> None:
+        """Feed the charge-session detector with the place computed by this snapshot's evaluation."""
+        try:
+            if self.last_where is None:
+                return
+            if self._charges is None:
+                self._charges = ChargeDetector(store.open_charge_session())
+            for ev in self._charges.feed(snap, self.last_where, self.last_place):
+                self._persist_charge(ev)
+        except Exception:
+            logger.exception("charge session recording failed")
+
+    @staticmethod
+    def _persist_charge(ev: ChargeEvent) -> None:
+        s = ev.session
+        if ev.kind == "start":
+            s.id = store.save_charge_session(s).id
+        if ev.sample is not None and s.id is not None:
+            store.add_charge_sample(s.id, ev.sample.at, ev.sample.soc, ev.sample.rate_kmh)
+        if ev.kind != "start" and s.id is not None:
+            store.save_charge_session(store.recompute_session_cost(s))
 
     def _evaluate(self, car: CarSnapshot) -> None:
         # a re-plug forces one command on this evaluation only, also when it returns early (no lingering resend)
