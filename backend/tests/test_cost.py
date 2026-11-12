@@ -85,3 +85,14 @@ def test_closing_sample_makes_cost_cover_session_kwh():
     s = make(soc_end=75, kwh=session_kwh(20, 75, 46), ended_at=local(8, 0))
     # 18.4 kWh vazio + (4.6 + 2.3) kWh cheias
     assert session_cost(s, samples, TARIFF, 46) == pytest.approx(18.4 * 0.10 + 6.9 * 0.20)
+
+
+def test_home_cost_never_exceeds_session_kwh_with_soc_dip():
+    dip = [
+        ChargeSample(session_id=1, at=local(0, 10), soc=20, rate_kmh=30),
+        ChargeSample(session_id=1, at=local(1, 0), soc=60, rate_kmh=30),
+        ChargeSample(session_id=1, at=local(2, 0), soc=55, rate_kmh=30),  # dip: raw positive deltas would sum to 60 %
+        ChargeSample(session_id=1, at=local(3, 0), soc=70, rate_kmh=30),
+    ]
+    cost = session_cost(make(), dip, TARIFF, 46)  # session.kwh = 23.0 (50 %), all parts at vazio 0.10
+    assert cost == pytest.approx(23.0 * 0.10)
