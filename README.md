@@ -1,80 +1,88 @@
-# Remote Control of PSA car
-[![Codacy Badge](https://api.codacy.com/project/badge/Grade/4b4b98fe6dc04956a1c9a07b97c46c06)](https://app.codacy.com/gh/flobz/psa_car_controller?utm_source=github.com&utm_medium=referral&utm_content=flobz/psa_car_controller&utm_campaign=Badge_Grade_Settings)
-[![Codacy Badge](https://app.codacy.com/project/badge/Coverage/f4082f146ad044bb900e1683035a540b)](https://www.codacy.com/gh/flobz/psa_car_controller/dashboard?utm_source=github.com&utm_medium=referral&utm_content=flobz/psa_car_controller&utm_campaign=Badge_Coverage)
-[![Publish Docker image](https://github.com/flobz/psa_car_controller/actions/workflows/Docker_build.yml/badge.svg?branch=master)](https://hub.docker.com/repository/docker/flobz/psa_car_controller)
-[![Donate](https://img.shields.io/badge/Donate-PayPal-blue.svg)](https://www.paypal.com/donate?hosted_button_id=SM652WPXFNCXS)
-### This is a Python program to control and get information from a PSA car.
-I test it with a Peugeot e-208, but it works with other PSA vehicles (Citroen, Opel, Vauxhall, DS).
+# psacc
 
-With this app you will be able to:
- - get the status of the car (battery level for electric vehicle, position ... )
- - start and stop the charge
- - set a charge threshold to limit the battery level to a certain percentage
- - set a stop hour to charge your vehicle only on off-peak hours
- - control air conditioning
- - control lights and horn if your vehicle is compatible
- - lock and unlock doors
- - get consumption statistics
- - visualize your trips on a map or in a table
- - get the list of car charging  
- - visualize battery charging curve
- - visualize altitude trip curve
- - get car charging CO2 emission
- - get car charging price
- - send live data to ABetterRoutePlanner
+Aplicação pessoal (um só utilizador) para controlar um Peugeot e-208 através da API ligada da PSA/Stellantis
+e automatizar o carregamento de acordo com a tarifa EDA (tri-horário semanal, Açores).
 
-The official API is documented [here](https://developer.groupe-psa.io/webapi/b2c/quickstart/connect/#article) but it is not totally up to date, and contains some errors. 
+- **Automação**: inicia o carregamento no início do vazio (por omissão 10 min depois, ex.: `00h10`) e adia-o
+  antes do fim do vazio (ex.: `06h50`), respeitando o limite de bateria (por omissão 80 %).
+- **Painel**: estado da bateria, autonomia, carregamento, preços EDA por período, registo de atividade.
+- **Controlo**: "Carregar agora" (substitui a automação até ao limite de bateria ou até desligar o carro),
+  pré-condicionamento, etc.
+- **Alertas** opcionais por webhook do Discord (falha de comando, falha de autenticação PSA, MQTT em baixo).
 
+Cargas, Viagens e Consumo mostram "Em breve".
 
- ## I. Installation
-- [Installation on Linux or Windows](docs/Install.md)
-- [Installation as Home Assistant addon](https://github.com/flobz/psacc-ha/blob/main/psacc-ha/README.md)  
-- [Installation in Docker](docs/Docker.md)
-- [Installation on Raspberry Pi with docker-compose (external Tutorial)](https://return2.net/opel-peugeot-electric-vehicle-set-charging-threshold-limit/)
- ## II. Use the API
+> **Segurança:** a aplicação não deve ser exposta à Internet. Mantenha-a na rede local (LAN); tem apenas uma
+> palavra-passe única e controla um veículo real.
 
-Look at [API documentation](./docs/psacc_api.md)
+## Instalação (Docker)
 
-## III. Use the dashboard
+```bash
+docker compose up -d --build
+```
 
-You can add the -r argument to record the position of the vehicle and retrieve this information in a dashboard.
+Abra `http://<servidor>:5000`.
 
-``python3 psa-car-controller -f config.json -c charge_config.json -r``
-    
-You will be able to visualize your trips, your consumption and some statistics:
-    
-     
-![Screenshot_20210128_104519](https://user-images.githubusercontent.com/48728684/106119895-01c98d80-6156-11eb-8969-9e8bc24f3677.png)
-- You have to add an API key from https://home.openweathermap.org/ in your config file, to be able to see your consumption vs exterior temperature.
-- You have to add an API key from https://co2signal.com/ to have your CO2 emission by KM (in France the key isn't needed). 
-### IV. Charge price calculation
-The dashboard can give you the price by kilometer and price by kw that you pay.
-You just have to set the price in the config file.
+### Primeira utilização
 
-After a successful launch of the app, a config.ini file will be created.
-In this file you can set the price you pay for electricity in the following format "0.15".
+1. Defina a palavra-passe (primeiro acesso).
+2. **Definições** → ligar a conta PSA (e-mail e palavra-passe da conta Peugeot).
+3. Introduza o código recebido por SMS e o PIN da aplicação.
+4. Em **Definições**, defina os preços EDA (o preset "EDA tri-horário semanal" pode ser editado).
+5. Em **Automação**, confirme o desfasamento (10 min), o limite de bateria (80 %) e que a automação está ligada.
 
-If you have a special price during the night you can set "night price", "night hour start" and "night hour end". 
-Hours need to be in the following format "23h12".
+### Onde ficam os dados
 
-You can modify a price manually in the dashboard. It can be useful if you use public charge point.
-## V. Connection to other services:
-- [Domoticz](docs/domoticz/Domoticz.md)
-- [HomeAssistant](https://github.com/Flodu31/HomeAssistant-PeugeotIntegration)
-- Jeedom (Anyone can share the procedure ?)
-- You can send live car status to ABRP (A better Route Planner), see [this page](docs/abrp.md)
-- [Grafana](https://github.com/flobz/psa_car_controller/issues/161)
+Tudo em `./data` no anfitrião (montado em `/data` no contentor): base de dados, configuração e credenciais.
+Faça cópias de segurança desta pasta. Fuso horário: `Atlantic/Azores`.
 
-## FAQ
-If you have a problem or a question, please check if the answer isn't already in the [FAQ](FAQ.md). 
+### Atualizar
 
-## Contribute
-If you need information to contribute or edit this program go [here](docs/Develop.md).
+```bash
+git pull
+docker compose up -d --build
+```
 
-## Donation
-If you want to thank me for my work :smile:
+Os dados em `./data` são preservados.
 
-[![donate](https://www.paypalobjects.com/en_US/i/btn/btn_donate_LG.gif)](https://www.paypal.com/donate?hosted_button_id=SM652WPXFNCXS)
+## Desenvolvimento
 
-## Acknowledgements
-- thanks to @tamcore for https://github.com/tamcore/stelloauth 
+Backend (Python 3.12):
+
+```bash
+cd backend
+python -m venv .venv
+.venv/Scripts/pip install -e .[dev]      # Linux/macOS: .venv/bin/pip
+.venv/Scripts/python -m pytest -q
+.venv/Scripts/python -m ruff check psacc --exclude psacc/psa/connected_car_api
+PSACC_FAKE=1 .venv/Scripts/python -m uvicorn psacc.main:app --port 8000
+```
+
+`PSACC_FAKE=1` usa um carro falso em memória (modo demonstração, sem conta PSA). Nunca usar em produção.
+
+Frontend (Node 22):
+
+```bash
+cd frontend
+npm ci
+npm run dev        # http://localhost:5173, /api faz proxy para http://127.0.0.1:8000
+npm test
+npm run lint
+npm run build
+```
+
+### Script de diagnóstico (spike)
+
+Execute **uma vez**, com o carro ligado à tomada e a carregar, para confirmar como a API trata o adiamento
+do carregamento e o significado de `charging.nextDelayedTime`:
+
+```bash
+cd backend
+python scripts/spike_deferred.py
+```
+
+Escreve `spike-report.json` (sem tokens, VIN nem posição) na pasta de dados.
+
+## Licença
+
+GPL-3.0, ver `LICENSE`. Baseado no projeto psa_car_controller.
