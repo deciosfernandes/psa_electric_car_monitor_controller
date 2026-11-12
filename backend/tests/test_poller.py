@@ -33,6 +33,10 @@ class RecordingEngine:
         self.statuses = []
         self.threads = []
         self.received = threading.Event()
+        self.pending = False
+
+    def verification_pending(self) -> bool:
+        return self.pending
 
     def on_status(self, snap) -> None:
         self.statuses.append(snap)
@@ -244,3 +248,103 @@ def test_poller_stopped_during_fetch_does_not_act():
     assert saved == []
     assert notifier.alerts == []
     assert poller.latest() is None
+
+
+THU_1200 = datetime(2026, 11, 12, 12, 0, tzinfo=TZ)  # no planned event between 06h50 and 00h10
+
+
+def at_clock(gateway, clock, **kw):
+    gateway.snap = dataclasses.replace(gateway.snap, at=clock.now, **kw)
+
+
+def test_no_wakeup_when_unplugged():
+    clock = Clock(THU_1200)
+    poller, gateway, *_ = make(clock)
+    at_clock(gateway, clock, plugged=False, charging=False, charge_status="Disconnected")
+    gateway.snap = dataclasses.replace(gateway.snap, at=clock.now - timedelta(hours=5))  # stale
+    poller.run_once()  # startup: state unknown -> wake once
+    for _ in range(3):
+        clock.advance(minutes=5)
+        poller.run_once()
+    assert gateway.refreshes == [True, False, False, False, False]
+
+
+def test_no_wakeup_when_idle_and_fresh_then_hourly():
+    clock = Clock(THU_1200)
+    poller, gateway, *_ = make(clock)
+    at_clock(gateway, clock)
+    poller.run_once()
+    for _ in range(11):  # 12h05 .. 12h55: snapshot (12h00) younger than 60 min
+        clock.advance(minutes=5)
+        poller.run_once()
+    assert gateway.refreshes == [True, False] + [False] * 11
+    clock.advance(minutes=5)  # 13h00: snapshot 60 min old
+    poller.run_once()
+    assert gateway.refreshes[-2:] == [True, False]
+
+
+def test_wakeup_while_verification_pending():
+    clock = Clock(THU_1200)
+    poller, gateway, engine, _ = make(clock)
+    at_clock(gateway, clock)
+    poller.run_once()
+    engine.pending = True
+    clock.advance(minutes=5)
+    poller.run_once()
+    assert gateway.refreshes == [True, False, True, False]
+
+
+def test_wakeup_only_within_15_min_after_event():
+    clock = Clock(datetime(2026, 11, 12, 6, 55, tzinfo=TZ))
+    poller, gateway, *_ = make(clock)
+    at_clock(gateway, clock)
+    poller.run_once()
+    clock.advance(minutes=5)  # 07h00: 10 min after the 06h50 defer
+    poller.run_once()
+    clock.advance(minutes=5)  # 07h05: 15 min after, snapshot fresh
+    poller.run_once()
+    assert gateway.refreshes == [True, False, True, False, False]
+
+
+def test_extra_wakeup_3_min_after_each_event():
+    store.save_config(store.AppConfig(refresh_min=30))
+    clock = Clock(datetime(2026, 11, 12, 6, 40, tzinfo=TZ))
+    poller, gateway, *_ = make(clock)
+    at_clock(gateway, clock)
+    poller.run_once()
+    assert poller.next_wake() == datetime(2026, 11, 12, 6, 50, 5, tzinfo=TZ)
+    clock.now = poller.next_wake()
+    poller.run_once()  # the event itself: plain fetch, the engine verifies its own command
+    assert poller.next_wake() == datetime(2026, 11, 12, 6, 53, tzinfo=TZ)
+    clock.now = poller.next_wake()
+    poller.run_once()
+    assert gateway.refreshes == [True, False, False, True, False]
+    assert poller.next_wake() == datetime(2026, 11, 12, 7, 10, tzinfo=TZ)  # follow-up done: next refresh
+
+
+def test_no_follow_up_wakeup_when_unplugged():
+    store.save_config(store.AppConfig(refresh_min=30))
+    clock = Clock(datetime(2026, 11, 12, 6, 40, tzinfo=TZ))
+    poller, gateway, *_ = make(clock)
+    at_clock(gateway, clock, plugged=False, charging=False, charge_status="Disconnected")
+    poller.run_once()
+    clock.now = datetime(2026, 11, 12, 6, 53, tzinfo=TZ)
+    poller.run_once()
+    assert gateway.refreshes == [True, False, False]
+
+
+def test_plug_in_push_triggers_immediate_wakeup():
+    clock = Clock(THU_1200)
+    poller, gateway, engine, _ = make(clock)
+    at_clock(gateway, clock, plugged=False, charging=False, charge_status="Disconnected")
+    poller.run_once()
+    clock.advance(minutes=1)
+    assert poller.next_wake() > clock.now
+    plugged = dataclasses.replace(gateway.snap, plugged=True, charge_status="Stopped", at=clock.now)
+    gateway.emit(plugged)
+    poller._drain_pushed()
+    assert engine.statuses[-1] is plugged
+    assert poller.next_wake() == clock.now
+    gateway.snap = plugged
+    poller.run_once()
+    assert gateway.refreshes == [True, False, True, False]

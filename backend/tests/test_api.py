@@ -378,3 +378,16 @@ def test_setup_login_requires_package_name(logged, monkeypatch):
     r = logged.post("/api/setup/login", json={**body, "app_name": "com.psa.mym.mypeugeot"})
     assert r.status_code == 200
     assert seen[0][0] == "com.psa.mym.mypeugeot"
+
+
+def test_automation_and_tariff_changes_retick_engine(logged):
+    ticks = []
+    logged.app.state.engine.tick = lambda: ticks.append(1)
+    body = {"enabled": True, "offset_min": 20, "battery_limit": 80}
+    assert logged.put("/api/automation", json=body).status_code == 200
+    assert len(ticks) == 1
+    tariff = logged.get("/api/tariff").json()
+    assert logged.put("/api/tariff", json=tariff).status_code == 200
+    assert len(ticks) == 2
+    assert logged.post("/api/tariff/reset").status_code == 200
+    assert len(ticks) == 3

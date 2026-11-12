@@ -73,6 +73,7 @@ class _Round:
     reason: str
     alerted: bool
     manual: bool = False  # started by manual_charge() with automation off: not cancelled by "Automação desligada"
+    program_hour: tuple[int, int] | None = None
     attempts: int = 0
     phase: Literal["verify", "retry"] = "verify"
     sent_at: datetime | None = None
@@ -96,6 +97,7 @@ class Engine:
         self._lock = threading.RLock()  # tick() runs from the poller, MQTT callbacks, API and timer threads
         self._round: _Round | None = None
         self._plugged: bool | None = None
+        self._replugged = False  # cable just plugged back in: (re)send the command even if one was verified
         self._closed = False  # set by close(): every entry point becomes a no-op
 
     # ---- public entry points: never raise -------------------------------------------------------------
@@ -195,6 +197,7 @@ class Engine:
             return
         if self._plugged is not None and snap.plugged != self._plugged:
             store.log_activity("info", "Cabo ligado" if snap.plugged else "Cabo desligado", at=self._clock())
+            self._replugged = snap.plugged
         self._plugged = snap.plugged
 
     def _evaluate(self, car: CarSnapshot) -> None:
@@ -224,14 +227,21 @@ class Engine:
                 return  # already being enforced
             self._cancel_round()
         last = store.get_last_command()
-        if self._needs_command(decision.mode, car, last, now):
+        if self._replugged or self._needs_command(decision.mode, car, last, now):
+            self._replugged = False
             self._start_round(decision, last)
+
+    def verification_pending(self) -> bool:
+        """A command is in flight (sent, not yet verified or given up). Read without the lock: advisory only."""
+        return self._round is not None
 
     def _needs_command(self, mode: Mode, car: CarSnapshot, last: LastCommand | None, now: datetime) -> bool:
         if last is None or last.mode != mode or not last.verified:
             return True
         if mode == "defer":
-            return bool(car.charging)
+            # a stale program hour (tariff/offset edited, or the next vazio start moved) would let the car
+            # start on its own at the wrong time
+            return bool(car.charging) or last.program_hour != self._program_hour(now)
         stale = now - last.at > timedelta(seconds=self.verify_delay_s * 3)
         return not car.charging and car.charge_status != "Finished" and stale
 
@@ -262,9 +272,9 @@ class Engine:
     def _attempt(self, r: _Round) -> None:
         r.attempts += 1
         r.sent_at = self._clock()
-        hour = self._program_hour(r.sent_at)
+        r.program_hour = self._program_hour(r.sent_at)
         try:
-            ok = self.gateway.set_charge_mode(r.mode, hour)
+            ok = self.gateway.set_charge_mode(r.mode, r.program_hour)
         except Exception:
             logger.exception("set_charge_mode(%s) raised", r.mode)
             ok = False
@@ -310,6 +320,11 @@ class Engine:
         r.alerted = False
         self._persist(r, verified=True)
         store.log_activity("action", f"{r.reason} → {_deferred_label(r.mode)}", at=self._clock())
+        text = "🔌 Carga iniciada" if r.mode == "charge" else "⏸ Carga diferida"
+        try:
+            self.notifier.info(f"{text} ({r.reason})")  # the notifier sends it only if info messages are on
+        except Exception:
+            logger.exception("info message could not be sent")
 
     def _give_up(self, r: _Round) -> None:
         self._round = None
@@ -323,17 +338,27 @@ class Engine:
         )
         r.alerted = True
         self._persist(r, verified=False)
-        try:
-            self.notifier.alert(
+        if r.mode == "charge":
+            text = f"⚠️ PSACC: não consegui iniciar a carga no vazio ({r.reason})."
+        else:
+            text = (
                 f"⚠️ PSACC: não consegui {_verb(r.mode)} a carga diferida ({r.reason}). "
                 "O carro pode estar a carregar fora do vazio."
             )
+        try:
+            self.notifier.alert(text)
         except Exception:
             logger.exception("failure alert could not be sent")
 
     def _persist(self, r: _Round, verified: bool) -> None:
         store.set_last_command(
             LastCommand(
-                mode=r.mode, at=r.sent_at, verified=verified, attempts=r.attempts, reason=r.reason, alerted=r.alerted
+                mode=r.mode,
+                at=r.sent_at,
+                verified=verified,
+                attempts=r.attempts,
+                reason=r.reason,
+                alerted=r.alerted,
+                program_hour=r.program_hour,
             )
         )

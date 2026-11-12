@@ -49,6 +49,7 @@ class LastCommand(BaseModel):
     attempts: int
     reason: str = ""
     alerted: bool = False  # failure alert already sent in this episode (reset on the next verified success)
+    program_hour: tuple[int, int] | None = None  # (hour, minute) Azores local time sent with the command
 
 
 class BatterySample(BaseModel):

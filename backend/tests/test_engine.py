@@ -432,3 +432,74 @@ def test_closed_engine_is_inert():
     assert gw.calls == []
     assert sched.scheduled == []
     assert store.get_override() is None
+
+
+def test_verified_defer_resent_when_program_hour_changes():
+    engine, gw, notifier, sched, clock = make(car=snap(plugged=True, charging=False, soc=50.0), apply_effect=True)
+    engine.tick()
+    engine.verify_now()
+    last = store.get_last_command()
+    assert (last.mode, last.verified, last.program_hour) == ("defer", True, (0, 10))
+    engine.tick()
+    assert len(charge_calls(gw)) == 1  # same program hour: nothing to do
+    store.save_config(AppConfig(offset_min=25))  # next vazio start moves to 00h25
+    engine.tick()
+    assert charge_calls(gw)[-1] == ("set_charge_mode", "defer", (0, 25))
+    engine.verify_now()
+    assert store.get_last_command().program_hour == (0, 25)
+
+
+def test_defer_without_stored_program_hour_is_resent():
+    engine, gw, *_ = make(car=snap(plugged=True, charging=False, soc=50.0))
+    store.set_last_command(store.LastCommand(mode="defer", at=thu(18), verified=True, attempts=1))
+    engine.tick()
+    assert charge_calls(gw) == [("set_charge_mode", "defer", (0, 10))]
+
+
+def test_info_message_on_verified_success():
+    engine, gw, notifier, sched, clock = make(car=snap(plugged=True, charging=True, soc=50.0), apply_effect=True)
+    engine.tick()
+    assert notifier.infos == []  # only once verified
+    engine.verify_now()
+    assert notifier.infos == ["⏸ Carga diferida (Fora do vazio (ponta))"]
+    clock.now = datetime(2026, 11, 13, 1, 0, tzinfo=TZ)  # vazio
+    engine.tick()
+    engine.verify_now()
+    assert notifier.infos[-1] == "🔌 Carga iniciada (Período de vazio)"
+
+
+def test_no_info_message_when_not_verified():
+    engine, gw, notifier, *_ = make()
+    gw.fail_next = 3
+    engine.tick()
+    for _ in range(3):
+        engine.verify_now()
+    assert notifier.infos == []
+
+
+def test_charge_failure_alert_text():
+    engine, gw, notifier, *_ = make(
+        car=snap(plugged=True, charging=False, soc=50.0), at=datetime(2026, 11, 13, 1, 0, tzinfo=TZ)
+    )
+    gw.fail_next = 3
+    engine.tick()
+    for _ in range(3):
+        engine.verify_now()
+    assert notifier.alerts == ["⚠️ PSACC: não consegui iniciar a carga no vazio (Período de vazio)."]
+
+
+def test_replug_forces_defer_even_after_verified_defer():
+    engine, gw, notifier, sched, clock = make(car=snap(plugged=True, charging=False, soc=50.0), apply_effect=True)
+    engine.on_status(gw.snap)
+    engine.verify_now()
+    assert store.get_last_command().verified is True
+    gw.snap = snap(plugged=False, charging=False, charge_status="Disconnected")
+    engine.on_status(gw.snap)
+    assert len(charge_calls(gw)) == 1  # unplugged: nothing sent
+    clock.now = thu(21)
+    gw.snap = snap(plugged=True, charging=False, charge_status="Stopped", soc=50.0)
+    engine.on_status(gw.snap)  # plugged back in outside vazio, not (yet) charging
+    assert charge_calls(gw) == [("set_charge_mode", "defer", (0, 10))] * 2
+    engine.verify_now()
+    engine.on_status(gw.snap)
+    assert len(charge_calls(gw)) == 2  # the forced command is one-off

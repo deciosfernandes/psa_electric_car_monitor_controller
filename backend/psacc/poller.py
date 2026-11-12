@@ -5,8 +5,13 @@ MQTT-pushed snapshot. Pushed snapshots are queued by the subscriber (which runs 
 and handed to ``Engine.on_status`` on the poller thread only, because the engine holds its lock across
 REST calls. Pushes still queued when a poll fetched a REST snapshot are discarded (see ``_discard_pushed``).
 
-A refresh asks the car to wake up, which only makes PSA's REST state fresh some seconds later, so it waits
-``settle_s`` (interruptible) and fetches again before feeding the engine.
+Every poll reads PSA's REST state; only some polls also wake the car (``refresh=True``), because each wakeup
+costs the 12 V battery and is rate-limited by PSA. A wakeup happens only while the cable is plugged in or its
+state is unknown, and then only when the poll is a follow-up ``FOLLOW_UP_DELAY`` after a planned event (catches
+the car self-starting on its own program), the cable was just plugged in, a planned event happened in the last
+``WAKE_AFTER_EVENT``, a command verification is pending, or the snapshot (and the last wakeup) is older than
+``STALE_AFTER``. A wakeup only makes PSA's REST state fresh some seconds later, so it waits ``settle_s``
+(interruptible) and fetches again before feeding the engine.
 """
 
 import logging
@@ -30,6 +35,9 @@ ALERT_MQTT = "📡 PSACC: ligação MQTT à PSA em baixo há mais de 15 min; os 
 MQTT_DOWN_ALERT_AFTER = timedelta(minutes=15)
 EVENT_DELAY = timedelta(seconds=5)  # wake just after a planned event so decide() already sees the new mode
 SETTLE_S = 20  # wait after a wakeup before re-fetching the REST state
+WAKE_AFTER_EVENT = timedelta(minutes=15)
+FOLLOW_UP_DELAY = timedelta(minutes=3)  # one extra wakeup this long after each planned event
+STALE_AFTER = timedelta(minutes=60)
 MAX_SLEEP_S = 60  # re-plan at least this often (config/tariff changes, clock jumps)
 ERROR_BACKOFF_S = 5
 AUTH_ERRORS = (RemoteException, OAuthError)
@@ -72,7 +80,10 @@ class Poller:
         self._pushed: queue.Queue[CarSnapshot] = queue.Queue()
         self._thread: threading.Thread | None = None
         self._latest: CarSnapshot | None = None
-        self._last_refresh: datetime | None = None
+        self._last_refresh: datetime | None = None  # last interval poll (refresh_min)
+        self._last_wakeup: datetime | None = None
+        self._followed_up: set[datetime] = set()  # planned events whose follow-up wakeup was done (or skipped)
+        self._force_wake = False  # cable just plugged in: poll and wake now
         self._auth_alerted = False
         self._mqtt_down_since: datetime | None = None
         self._mqtt_alerted = False
@@ -85,9 +96,17 @@ class Poller:
 
     def run_once(self) -> None:
         now = self._clock()
-        refresh = self._refresh_due(now)
+        poll_due = self._refresh_due(now)
+        follow_up = self._follow_up_due(now)
+        forced, self._force_wake = self._force_wake, False
+        if poll_due:
+            self._last_refresh = now
+        if follow_up is not None:
+            self._followed_up.add(follow_up)
+        urgent = follow_up is not None or forced
+        refresh = (poll_due or urgent) and self._wake_wanted(now, urgent)
         if refresh:
-            self._last_refresh = now  # even on failure: never hammer the rate-limited wakeup
+            self._last_wakeup = now  # even on failure: never hammer the rate-limited wakeup
         snap, auth_error = None, False
         try:
             snap = self._fetch(refresh)
@@ -108,20 +127,41 @@ class Poller:
 
     def next_wake(self) -> datetime:
         now = self._clock()
-        if self._last_refresh is None:
+        if self._last_refresh is None or self._force_wake or self._follow_up_due(now) is not None:
             return now
-        cfg = store.get_config()
-        wake = self._last_refresh + timedelta(minutes=max(cfg.refresh_min, 1))
+        wake = self._last_refresh + timedelta(minutes=max(store.get_config().refresh_min, 1))
+        for ev in self._events(now):
+            candidates = [ev.at + EVENT_DELAY]
+            if ev.at not in self._followed_up:
+                candidates.append(ev.at + FOLLOW_UP_DELAY)
+            wake = min([wake, *(at for at in candidates if at > now)])
+        return wake
+
+    def _events(self, now: datetime) -> list:
         try:
-            events = planned_events(store.get_tariff(), cfg.offset_min, now - EVENT_DELAY, days=2)
+            return planned_events(store.get_tariff(), store.get_config().offset_min, now - WAKE_AFTER_EVENT, days=2)
         except Exception:
             logger.exception("planned events unavailable")
-            events = []
-        for ev in events:
-            at = ev.at + EVENT_DELAY
-            if at > now:
-                return min(wake, at)
-        return wake
+            return []
+
+    def _follow_up_due(self, now: datetime) -> datetime | None:
+        """The planned event (its time) whose follow-up wakeup is due now and was not done yet."""
+        self._followed_up = {t for t in self._followed_up if now - t < timedelta(days=1)}
+        for ev in self._events(now):
+            if ev.at + FOLLOW_UP_DELAY <= now < ev.at + WAKE_AFTER_EVENT and ev.at not in self._followed_up:
+                return ev.at
+        return None
+
+    def _wake_wanted(self, now: datetime, urgent: bool) -> bool:
+        latest = self._latest
+        if latest is not None and latest.plugged is False:
+            return False  # unplugged: the car cannot charge, nothing to enforce
+        if urgent or self.engine.verification_pending():
+            return True
+        if any(ev.at <= now < ev.at + WAKE_AFTER_EVENT for ev in self._events(now)):
+            return True
+        snapshot_stale = latest is None or now - latest.at >= STALE_AFTER
+        return snapshot_stale and (self._last_wakeup is None or now - self._last_wakeup >= STALE_AFTER)
 
     def _refresh_due(self, now: datetime) -> bool:
         if self._last_refresh is None:
@@ -139,7 +179,9 @@ class Poller:
     def _handle(self, snap: CarSnapshot) -> None:
         if self._stop.is_set():
             return
-        self._latest = snap
+        previous, self._latest = self._latest, snap
+        if previous is not None and previous.plugged is False and snap.plugged is True:
+            self._force_wake = True  # plugged back in: get the real state and let the engine act at once
         self.engine.on_status(snap)
 
     @staticmethod
