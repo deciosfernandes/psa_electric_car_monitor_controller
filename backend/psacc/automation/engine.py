@@ -333,8 +333,9 @@ class Engine:
         previous = self.last_where
         self.last_where, self.last_place = locate(now, car, fix, store.list_places())
         if self.last_where != previous:
-            if previous is None:
-                pass  # first evaluation after startup is not a transition
+            if previous is None:  # first evaluation after startup is not a transition...
+                if self.last_where == "unset":  # ...but a missing Casa must be visible in the log (spec §10)
+                    store.log_activity("info", "Automação em pausa: Defina o local Casa", at=now)
             elif self.last_where == "home":
                 store.log_activity("info", "Em Casa — automação ativa", at=now)
             elif self.last_where == "work":

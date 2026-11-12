@@ -817,6 +817,15 @@ def test_pause_logged_when_no_home_defined():
     assert messages().count("Automação em pausa: Defina o local Casa") == 1
 
 
+def test_startup_without_home_logs_once():
+    engine, gw, *_ = make()
+    for p in store.list_places():
+        store.delete_place(p.id)
+    engine.tick()
+    engine.tick()
+    assert messages().count("Automação em pausa: Defina o local Casa") == 1
+
+
 def test_health_sample_stored_under_azores_date():
     late = datetime(2026, 11, 13, 0, 30, tzinfo=UTC)  # 23:30 on 12/11 in the Azores
     engine, gw, *_ = make(car=snap(battery_health=93.0, at=late))
