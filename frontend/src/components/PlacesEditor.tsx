@@ -14,6 +14,7 @@ export function PlacesEditor() {
   const places = useQuery({ queryKey: ['places'], queryFn: () => apiGet<Place[]>('/api/places') })
   const [draft, setDraft] = useState<Place | null>(null)
   const done = () => {
+    resetErrors()
     setDraft(null)
     void qc.invalidateQueries({ queryKey: ['places'] })
     void qc.invalidateQueries({ queryKey: ['status'] })
@@ -27,6 +28,11 @@ export function PlacesEditor() {
     mutationFn: (p: Place) => apiSend<Place>('POST', '/api/places/from-car', { name: p.name, kind: p.kind }),
     onSuccess: done,
   })
+  const resetErrors = () => [save, remove, fromCar].forEach((m) => m.reset())
+  const open = (p: Place | null) => {
+    resetErrors()
+    setDraft(p)
+  }
   const error = [save, remove, fromCar].find((m) => m.isError)?.error
   const set = (patch: Partial<Place>) => setDraft((d) => (d ? { ...d, ...patch } : d))
   const busy = save.isPending || fromCar.isPending
@@ -36,7 +42,7 @@ export function PlacesEditor() {
       <div className="flex items-center justify-between">
         <div className="label">Locais</div>
         {!draft && (
-          <button className="btn" onClick={() => setDraft(blank())}>
+          <button className="btn" onClick={() => open(blank())}>
             Adicionar local
           </button>
         )}
@@ -49,7 +55,7 @@ export function PlacesEditor() {
             <span className="text-muted">
               {p.radius_m} m{p.price_eur_kwh != null && ` · ${p.price_eur_kwh} €/kWh`}
             </span>
-            <button className="btn !py-1 !text-xs" onClick={() => setDraft(p)}>
+            <button className="btn !py-1 !text-xs" onClick={() => open(p)}>
               Editar
             </button>
             <button className="btn !py-1 !text-xs" disabled={remove.isPending} onClick={() => p.id !== null && remove.mutate(p.id)}>
@@ -107,7 +113,7 @@ export function PlacesEditor() {
               />
             </label>
           )}
-          <MiniMap lat={draft.lat} lon={draft.lon} radius_m={draft.radius_m} onPick={(lat, lon) => set({ lat, lon })} />
+          <MiniMap markers={[{ lat: draft.lat, lon: draft.lon }]} radiusM={draft.radius_m} onPick={(lat, lon) => set({ lat, lon })} />
           <div className="text-xs text-muted">
             Clique no mapa para definir o ponto ({draft.lat.toFixed(5)}, {draft.lon.toFixed(5)}).
           </div>
@@ -120,7 +126,7 @@ export function PlacesEditor() {
                 Usar posição atual do carro
               </button>
             )}
-            <button type="button" className="btn" onClick={() => setDraft(null)}>
+            <button type="button" className="btn" onClick={() => open(null)}>
               Cancelar
             </button>
           </div>

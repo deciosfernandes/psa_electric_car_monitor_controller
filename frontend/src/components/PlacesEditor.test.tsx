@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { PlacesEditor } from './PlacesEditor'
 
 vi.mock('./MiniMap', () => ({
-  MiniMap: ({ onPick }: { onPick: (a: number, b: number) => void }) => <button type="button" onClick={() => onPick(38.5, -28.6)}>mapa</button>,
+  MiniMap: ({ onPick }: { onPick?: (a: number, b: number) => void }) => <button type="button" onClick={() => onPick?.(38.5, -28.6)}>mapa</button>,
 }))
 
 afterEach(() => {
@@ -47,5 +47,25 @@ describe('PlacesEditor', () => {
     fireEvent.click(screen.getByText('mapa'))
     fireEvent.click(screen.getByText('Guardar'))
     await waitFor(() => expect(bodyOf(f, '/api/places')).toMatchObject({ name: 'Ginásio', kind: 'other', lat: 38.5, lon: -28.6, radius_m: 300, price_eur_kwh: 0.25 }))
+  })
+
+  it('shows the 409 message from from-car and clears it when the form is reopened', async () => {
+    const f = vi.fn(async (_url: string, init?: RequestInit) =>
+      init?.method === 'POST'
+        ? new Response(JSON.stringify({ detail: 'Posição do carro desconhecida' }), { status: 409 })
+        : new Response('[]', { status: 200 }),
+    )
+    vi.stubGlobal('fetch', f)
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <PlacesEditor />
+      </QueryClientProvider>,
+    )
+    fireEvent.click(await screen.findByText('Adicionar local'))
+    fireEvent.change(screen.getByLabelText('Nome'), { target: { value: 'Casa' } })
+    fireEvent.click(screen.getByText('Usar posição atual do carro'))
+    expect((await screen.findByRole('alert')).textContent).toBe('Posição do carro desconhecida')
+    fireEvent.click(screen.getByText('Cancelar'))
+    expect(screen.queryByRole('alert')).toBeNull()
   })
 })

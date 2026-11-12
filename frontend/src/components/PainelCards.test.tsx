@@ -62,6 +62,11 @@ describe('Painel cards', () => {
     expect(screen.getByText(/37\s256 km/)).toBeTruthy()
   })
 
+  it('null mileage shows a dash', () => {
+    wrap(<MileageCard status={status({ mileage_km: null, car: car({ mileage_km: null }) })} />)
+    expect(screen.getByText('—')).toBeTruthy()
+  })
+
   it('home banner posts from-car as Casa', async () => {
     const f = stubFetch()
     wrap(<HomeBanner />)
