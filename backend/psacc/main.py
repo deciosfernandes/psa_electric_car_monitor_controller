@@ -6,6 +6,7 @@ Run with ``uvicorn psacc.main:app``. Tests build their own app with ``create_app
 import dataclasses
 import logging
 import os
+import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -124,9 +125,18 @@ def create_app(db_url: str | None = None, gateway_factory: GatewayFactory | None
     return app
 
 
+LOG_FORMAT = "%(levelname)s:     %(name)s - %(message)s"  # same shape as uvicorn's own lines
+
+
+def configure_logging() -> None:
+    """App loggers at INFO to stdout (uvicorn only configures its own loggers); no-op if already configured."""
+    logging.basicConfig(level=logging.INFO, format=LOG_FORMAT, stream=sys.stdout)
+
+
 def __getattr__(name: str):
     # ``psacc.main:app`` is built on first access, so importing this module (tests) never opens the real DB
     if name == "app":
+        configure_logging()
         globals()["app"] = application = create_app()
         return application
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

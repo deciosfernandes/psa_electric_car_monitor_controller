@@ -102,7 +102,7 @@ class RemoteClient:
 
     def _on_mqtt_message(self, client, userdata, msg):  # pylint: disable=unused-argument
         try:
-            logger.info("mqtt msg received: %s %s", msg.topic, msg.payload)
+            logger.debug("mqtt msg received: %s %s", msg.topic, msg.payload)  # payload holds VIN and position
             data = json.loads(msg.payload)
             if msg.topic.startswith(MQTT_RESP_TOPIC):
                 if "return_code" not in data:
@@ -199,7 +199,7 @@ class RemoteClient:
             logger.error("Can't publish %s: remote token refresh failed", mqtt_request.topic)
             return False
         message = mqtt_request.get_message_to_json(self.remoteCredentials.access_token)
-        logger.debug("mqtt publish: %s %s", mqtt_request.topic, message)
+        logger.debug("mqtt publish: %s", mqtt_request)  # never the message: it embeds the access token
         self.mqtt_client.publish(mqtt_request.topic, message)
         if store:
             self.last_request = mqtt_request
@@ -238,14 +238,14 @@ class RemoteClient:
                                                   "refresh_token": self.remoteCredentials.refresh_token},
                                             headers=self.headers, timeout=TIMEOUT_IN_S)
                     data = res.json()
-                    logger.debug("refresh_remote_token: %s", data)
+                    logger.debug("refresh_remote_token response keys: %s", sorted(data))
                     if "access_token" in data:
                         self.remoteCredentials.access_token = data["access_token"]
                         bad_remote_token = False
                         if "refresh_token" in data:
                             self.remoteCredentials.refresh_token = data["refresh_token"]
                     else:
-                        logger.error("can't refresh_remote_token: %s\n Create a new one", data)
+                        logger.error("can't refresh_remote_token (%s), create a new one", data.get("error", "no token"))
                         bad_remote_token = True
                 if bad_remote_token:
                     otp_code = self.get_otp_code()
