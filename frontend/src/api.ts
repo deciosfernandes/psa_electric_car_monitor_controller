@@ -37,6 +37,7 @@ export interface LastCommand {
   attempts: number
   reason: string
   alerted: boolean
+  program_hour: [number, number] | null
 }
 
 export interface Status {

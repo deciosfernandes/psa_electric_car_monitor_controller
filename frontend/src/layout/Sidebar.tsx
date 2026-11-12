@@ -1,4 +1,7 @@
-import { NavLink } from 'react-router'
+import { useQueryClient } from '@tanstack/react-query'
+import { useState } from 'react'
+import { NavLink, useNavigate } from 'react-router'
+import { apiSend } from '../api'
 import { useStatus } from '../useStatus'
 import { Icon, type IconName } from './Icon'
 
@@ -16,6 +19,27 @@ function minutesAgo(iso: string): number {
   return Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 60000))
 }
 
+function LogoutButton() {
+  const qc = useQueryClient()
+  const navigate = useNavigate()
+  const [busy, setBusy] = useState(false)
+  const logout = async () => {
+    setBusy(true)
+    try {
+      await apiSend('POST', '/api/auth/logout')
+    } catch {
+      /* the session is dropped client-side anyway */
+    }
+    qc.clear() // no cached data of the old session survives
+    navigate('/login', { replace: true })
+  }
+  return (
+    <button type="button" className="btn mt-2 w-full justify-center" disabled={busy} onClick={() => void logout()}>
+      Terminar sessão
+    </button>
+  )
+}
+
 function StatusFooter() {
   const { data } = useStatus()
   const since = data ? (data.car?.at ?? data.updated_at) : null
@@ -31,6 +55,7 @@ function StatusFooter() {
           MQTT {data.mqtt_connected ? 'ligado' : 'desligado'}
         </div>
       )}
+      <LogoutButton />
     </div>
   )
 }

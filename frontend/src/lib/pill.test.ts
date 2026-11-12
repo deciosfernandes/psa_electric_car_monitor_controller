@@ -15,7 +15,7 @@ const status = (over: Partial<Status> = {}, c: Partial<CarSnapshot> = {}): Statu
 const act = (kind: Activity['kind'], source: Activity['source'] = 'automation'): Activity[] => [
   { at: '2026-11-12T00:00:00-01:00', kind, message: 'x', source },
 ]
-const deferred = { mode: 'defer' as const, at: '', verified: true, attempts: 1, reason: '', alerted: false }
+const deferred = { mode: 'defer' as const, at: '', verified: true, attempts: 1, reason: '', alerted: false, program_hour: [0, 10] as [number, number] }
 
 describe('pillState', () => {
   it('charging', () => expect(pillState(status({}, { charging: true }), [])).toEqual({ label: 'A carregar · vazio', tone: 'ok' }))
