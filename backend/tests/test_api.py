@@ -10,6 +10,7 @@ from psacc import settings, store
 from psacc.auth import FAILURE_WINDOW_S, MAX_FAILURES, LoginRateLimiter
 from psacc.fake_gateway import FakeGateway, default_snapshot
 from psacc.main import CSRF_HEADER, create_app
+from psacc.history.charges import ChargeSession
 from psacc.places import Place
 from psacc.tariff.schedule import planned_events
 
@@ -531,21 +532,28 @@ def _seed_history():
 
     utc = timezone.utc
     store.save_place(Place(name="Casa", kind="home", lat=1, lon=1))
-    home = store.save_charge_session(
+
+    def save(session, samples=()):  # as the engine does: costs are frozen when the session is stored
+        s = store.save_charge_session(session)
+        for at, soc in samples:
+            store.add_charge_sample(s.id, at, soc, 20.0)
+        return store.save_charge_session(store.refresh_session_cost(s))
+
+    home = save(
         ChargeSession(
             started_at=datetime(2026, 10, 3, 2, 0, tzinfo=utc),
             ended_at=datetime(2026, 10, 3, 5, 0, tzinfo=utc),
-            place_kind="home", soc_start=20, soc_end=70)
+            place_kind="home", soc_start=20, soc_end=70),
+        [(datetime(2026, 10, 3, 3, 0, tzinfo=utc), 40)],
     )
-    store.add_charge_sample(home.id, datetime(2026, 10, 3, 3, 0, tzinfo=utc), 40, 20.0)
-    work = store.save_charge_session(
+    work = save(
         ChargeSession(
             started_at=datetime(2026, 10, 4, 10, 0, tzinfo=utc),
             ended_at=datetime(2026, 10, 4, 12, 0, tzinfo=utc),
             place_kind="work", soc_start=10, soc_end=30)
     )
     # 2026-11-01 01:00 UTC is November 01 00:00 Azores
-    store.save_charge_session(
+    save(
         ChargeSession(
             started_at=datetime(2026, 11, 1, 1, 0, tzinfo=utc),
             ended_at=datetime(2026, 11, 1, 2, 0, tzinfo=utc),
@@ -615,3 +623,97 @@ def test_consumption(logged):
     assert d["last30"] == {"km": 100.0, "kwh": 15.0, "kwh_100km": 15.0}
     assert sum(m["km"] for m in d["months"]) == 150.0
     assert all(set(m) == {"month", "km", "kwh", "kwh_100km"} for m in d["months"])
+
+
+# ---- frozen charge history ---------------------------------------------------------------------------------
+
+
+def _other_session(price=0.3):
+    utc = timezone.utc
+    store.save_place(Place(name="Posto", kind="other", lat=5, lon=5, price_eur_kwh=price))
+    s = store.save_charge_session(
+        ChargeSession(
+            started_at=datetime(2026, 10, 5, 10, 0, tzinfo=utc),
+            ended_at=datetime(2026, 10, 5, 12, 0, tzinfo=utc),
+            place_kind="other", place_name="Posto", soc_start=20, soc_end=70)
+    )
+    return store.save_charge_session(store.refresh_session_cost(s))
+
+
+def test_capacity_change_does_not_rewrite_finished_session(logged):
+    s = _other_session()
+    assert s.kwh == pytest.approx(23.0) and s.cost_eur == pytest.approx(6.9)
+    cfg = store.get_config()
+    cfg.battery_capacity_kwh = 60
+    store.save_config(cfg)
+    row = logged.get("/api/charges").json()[0]
+    assert row["kwh"] == pytest.approx(23.0) and row["cost_eur"] == pytest.approx(6.9)
+    logged.put(f"/api/charges/{s.id}/price", json={"eur_kwh": 0.5})
+    assert logged.get("/api/charges").json()[0]["kwh"] == pytest.approx(23.0)  # a price edit keeps the frozen kWh
+
+
+def test_deleting_or_renaming_other_place_keeps_cost(logged):
+    s = _other_session()
+    place = next(p for p in store.list_places() if p.kind == "other")
+    store.save_place(place.model_copy(update={"name": "Outro nome", "price_eur_kwh": 0.9}))
+    assert logged.get("/api/charges").json()[0]["cost_eur"] == pytest.approx(6.9)
+    store.delete_place(place.id)
+    assert logged.get("/api/charges").json()[0]["cost_eur"] == pytest.approx(6.9)
+    assert store.refresh_session_cost(store.get_charge_session(s.id)).cost_eur == pytest.approx(6.9)  # price kept
+
+
+def test_put_price_null_clears_override(logged):
+    s = _other_session()
+    assert logged.put(f"/api/charges/{s.id}/price", json={"eur_kwh": 0.5}).json()["cost_eur"] == pytest.approx(11.5)
+    r = logged.put(f"/api/charges/{s.id}/price", json={"eur_kwh": None})
+    assert r.status_code == 200
+    assert r.json()["price_override_eur_kwh"] is None and r.json()["cost_eur"] == pytest.approx(6.9)
+
+
+def test_reads_do_not_recompute_and_summary_reads_only_its_month(logged, monkeypatch):
+    _seed_history()
+
+    def boom(*a, **k):
+        raise AssertionError("reads must not recompute")
+
+    monkeypatch.setattr(store, "refresh_session_cost", boom)
+    monkeypatch.setattr(store, "_priced", boom)
+    monkeypatch.setattr(store, "charge_sessions", boom, raising=True)
+    seen = []
+    real = store.charge_sessions_between
+    monkeypatch.setattr(store, "charge_sessions_between", lambda a, b: seen.append((a, b)) or real(a, b))
+    assert logged.get("/api/charges/summary", params={"month": "2026-10"}).json()["kwh"] == pytest.approx(32.2)
+    # Azores: 1 Oct 00:00 is UTC+0 (summer time), 1 Nov 00:00 is UTC-1
+    first, last = datetime(2026, 10, 1, 0, tzinfo=timezone.utc), datetime(2026, 11, 1, 1, tzinfo=timezone.utc)
+    assert seen == [(first, last)]
+
+
+def test_charges_list_does_not_recompute(logged, monkeypatch):
+    _seed_history()
+    monkeypatch.setattr(store, "refresh_session_cost", lambda c: (_ for _ in ()).throw(AssertionError("recompute")))
+    monkeypatch.setattr(store, "_priced", lambda c: (_ for _ in ()).throw(AssertionError("recompute")))
+    assert len(logged.get("/api/charges").json()) == 3
+
+
+# ---- missing CSRF header, partial flag, Azores midnight -----------------------------------------------------
+
+
+def test_put_price_requires_csrf_header(logged):
+    s = _other_session()
+    r = logged.put(f"/api/charges/{s.id}/price", json={"eur_kwh": 0.5}, headers={CSRF_HEADER: ""})
+    assert r.status_code == 403
+
+
+def test_charges_expose_partial_flag(logged):
+    _seed_history()
+    assert all(isinstance(r["partial"], bool) for r in logged.get("/api/charges").json())
+
+
+def test_clearing_override_on_migrated_other_session_uses_current_place_price(logged):
+    s = _other_session(price=0.3)
+    # pre-migration row
+    migrated = store.save_charge_session(s.model_copy(update={"place_price_eur_kwh": None, "cost_eur": None}))
+    url = f"/api/charges/{migrated.id}/price"
+    assert logged.put(url, json={"eur_kwh": 0.5}).json()["cost_eur"] == pytest.approx(11.5)
+    r = logged.put(url, json={"eur_kwh": None}).json()
+    assert r["cost_eur"] == pytest.approx(6.9) and r["place_price_eur_kwh"] == 0.3

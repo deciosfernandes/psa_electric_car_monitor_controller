@@ -24,7 +24,7 @@ from ..places import Place, Where, locate, update_fix
 from ..settings import TZ
 from ..store import LastCommand, Override, WorkEpisode
 from ..tariff.schedule import next_vazio_start
-from .decide import Decision, decide
+from .decide import Decision, decide, not_home_reason
 
 logger = logging.getLogger(__name__)
 
@@ -273,7 +273,8 @@ class Engine:
         if ev.kind != "start" and s.id is not None:
             stored = store.get_charge_session(s.id)  # the user may have set a price since the session opened
             s.price_override_eur_kwh = stored.price_override_eur_kwh if stored else None
-            store.save_charge_session(store.recompute_session_cost(s))
+            s.place_price_eur_kwh = stored.place_price_eur_kwh if stored else None  # survives a deleted place
+            store.save_charge_session(store.refresh_session_cost(s))
 
     def _evaluate(self, car: CarSnapshot) -> None:
         # a re-plug forces one command on this evaluation only, also when it returns early (no lingering resend)
@@ -287,7 +288,8 @@ class Engine:
             override = None
         where = self._locate(car, now)
         work_charge_sent = self._work_charge_sent(car, where)
-        decision = decide(now, cfg, store.get_tariff(), car, override, where, work_charge_sent)
+        decision = decide(now, cfg, store.get_tariff(), car, override, where, work_charge_sent,
+                          self.last_place.name if self.last_place else None)
         if decision.clear_override and override is not None:
             store.set_override(None)
         if self._round is not None and self._round.timer is None:
@@ -328,7 +330,19 @@ class Engine:
         if new_fix is not None:
             store.set_position_fix(new_fix)
             fix = new_fix
+        previous = self.last_where
         self.last_where, self.last_place = locate(now, car, fix, store.list_places())
+        if self.last_where != previous:
+            if previous is None:  # first evaluation after startup is not a transition...
+                if self.last_where == "unset":  # ...but a missing Casa must be visible in the log (spec §10)
+                    store.log_activity("info", "Automação em pausa: Defina o local Casa", at=now)
+            elif self.last_where == "home":
+                store.log_activity("info", "Em Casa — automação ativa", at=now)
+            elif self.last_where == "work":
+                store.log_activity("info", "No Trabalho — automação de Casa em pausa", at=now)
+            else:
+                reason = not_home_reason(self.last_where, self.last_place.name if self.last_place else None)
+                store.log_activity("info", f"Automação em pausa: {reason}", at=now)
         return self.last_where
 
     def _work_charge_sent(self, car: CarSnapshot, where: Where) -> bool:

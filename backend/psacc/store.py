@@ -125,6 +125,7 @@ class ChargeSessionRow(SQLModel, table=True):
     kwh: float | None = None
     cost_eur: float | None = None
     price_override_eur_kwh: float | None = None
+    place_price_eur_kwh: float | None = None
     partial: bool = False
 
 
@@ -174,6 +175,7 @@ def init_db(url: str | None = None) -> None:
     _engine = create_engine(url, **kwargs)
     SQLModel.metadata.create_all(_engine)
     _add_activity_source(_engine)
+    _add_session_place_price(_engine)
     _restrict_db_file(url)
     _ensure_config()
 
@@ -184,6 +186,14 @@ def _add_activity_source(engine) -> None:
         return
     with engine.begin() as conn:
         conn.execute(text("ALTER TABLE activityrow ADD COLUMN source VARCHAR NOT NULL DEFAULT 'automation'"))
+
+
+def _add_session_place_price(engine) -> None:
+    """Databases created before the place price was frozen on the session get the column (existing rows: none)."""
+    if "place_price_eur_kwh" in {c["name"] for c in inspect(engine).get_columns("chargesessionrow")}:
+        return
+    with engine.begin() as conn:
+        conn.execute(text("ALTER TABLE chargesessionrow ADD COLUMN place_price_eur_kwh FLOAT"))
 
 
 def _restrict_db_file(url: str) -> None:
@@ -418,6 +428,15 @@ def charge_sessions(limit: int, offset: int = 0) -> list[ChargeSession]:
         return [_charge_session(r) for r in s.exec(q).all()]
 
 
+def charge_sessions_between(start: datetime, end: datetime) -> list[ChargeSession]:
+    """Sessions started in [start, end), newest first."""
+    with _session() as s:
+        q = select(ChargeSessionRow).where(
+            ChargeSessionRow.started_at >= _utc(start), ChargeSessionRow.started_at < _utc(end)
+        )
+        return [_charge_session(r) for r in s.exec(q.order_by(ChargeSessionRow.started_at.desc())).all()]
+
+
 def get_charge_session(session_id: int) -> ChargeSession | None:
     with _session() as s:
         row = s.get(ChargeSessionRow, session_id)
@@ -439,14 +458,30 @@ def charge_samples(session_id: int) -> list[ChargeSample]:
         return [ChargeSample(**{**r.model_dump(), "at": _utc(r.at)}) for r in s.exec(q).all()]
 
 
-def recompute_session_cost(c: ChargeSession) -> ChargeSession:
-    """The session with kwh and cost filled in from its soc, samples, the tariff and the place's price."""
-    cap = get_config().battery_capacity_kwh
-    if c.soc_end is not None:
-        c = c.model_copy(update={"kwh": session_kwh(c.soc_start, c.soc_end, cap)})
-    price = next((p.price_eur_kwh for p in list_places() if p.name == c.place_name and p.kind == "other"), None)
+def _other_place_price(name: str | None) -> float | None:
+    return next((p.price_eur_kwh for p in list_places() if p.name == name and p.kind == "other"), None)
+
+
+def _priced(c: ChargeSession) -> ChargeSession:
+    if c.place_kind == "other" and c.place_price_eur_kwh is None:  # row from before the price was stored
+        c = c.model_copy(update={"place_price_eur_kwh": _other_place_price(c.place_name)})
     samples = charge_samples(c.id) if c.id is not None else []
-    return c.model_copy(update={"cost_eur": session_cost(c, samples, get_tariff(), cap, price)})
+    cost = session_cost(c, samples, get_tariff(), get_config().battery_capacity_kwh, c.place_price_eur_kwh)
+    return c.model_copy(update={"cost_eur": cost})
+
+
+def refresh_session_cost(c: ChargeSession) -> ChargeSession:
+    """Live (open or just ended) session: kwh from the capacity in force now and, for an "other" place, that
+    place's current price (kept when the place is gone), then the cost. Persisted by the caller; once the session
+    has ended this is never called again, so later capacity or place changes do not rewrite history."""
+    if c.soc_end is not None:
+        kwh = session_kwh(c.soc_start, c.soc_end, get_config().battery_capacity_kwh)
+        c = c.model_copy(update={"kwh": kwh})
+    if c.place_kind == "other":
+        price = _other_place_price(c.place_name)
+        if price is not None:
+            c = c.model_copy(update={"place_price_eur_kwh": price})
+    return _priced(c)
 
 
 def set_session_price(session_id: int, eur_kwh: float | None) -> ChargeSession | None:
@@ -460,7 +495,7 @@ def set_session_price(session_id: int, eur_kwh: float | None) -> ChargeSession |
         s.commit()
         s.refresh(row)
         c = _charge_session(row)
-    return save_charge_session(recompute_session_cost(c))
+    return save_charge_session(_priced(c))  # kwh and place price stay as frozen
 
 
 def _trip(row: TripRow) -> Trip:

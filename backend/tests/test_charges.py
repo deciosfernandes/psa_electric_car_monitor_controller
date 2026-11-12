@@ -90,3 +90,22 @@ def test_unknown_charging_is_not_a_stop():
     d.feed(snap(0, 50), "home", HOME)
     assert d.feed(snap(10, 50, charging=None), "home", HOME) == []
     assert d.feed(snap(20, 50, charging=None), "home", HOME) == []
+
+
+def test_unplug_ends_session_even_when_energy_block_is_stale():
+    d = ChargeDetector()
+    d.feed(snap(0, 50), "home", HOME)
+    d.feed(snap(10, 52), "home", HOME)
+    # newer status (at) but the electric block timestamp did not move: the unplug must still close the session
+    unplugged = dataclasses.replace(snap(10, 52, plugged=False, charging=False), at=T0 + timedelta(minutes=25))
+    ev = d.feed(unplugged, "home", HOME)
+    assert kinds(ev) == ["end"] and ev[0].session.ended_at == T0 + timedelta(minutes=25)
+    assert d.current is None
+
+
+def test_stale_snapshot_with_old_status_time_does_not_end_session():
+    d = ChargeDetector()
+    d.feed(snap(0, 50), "home", HOME)
+    d.feed(snap(10, 52), "home", HOME)
+    assert d.feed(snap(10, 52, plugged=False, charging=False), "home", HOME) == []  # nothing newer from the car
+    assert d.current is not None

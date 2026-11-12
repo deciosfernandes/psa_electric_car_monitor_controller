@@ -92,7 +92,9 @@ Image runtime: the entrypoint (root) fixes `/data` ownership, sets it to 0700, `
   (home split per tariff period; work 0 €; other = place price; unknown = null), `trips.py` (TripDetector from
   the odometer; MQTT-only updates ignored; kWh from the SoC drop, approximate). Fed from `Engine.on_status` with
   that evaluation's place; failures are logged only; no extra wake-ups. History is kept forever. Usable capacity
-  `AppConfig.battery_capacity_kwh` defaults to 46 kWh.
+  `AppConfig.battery_capacity_kwh` defaults to 46 kWh. Charge kWh and cost are frozen when the session ends (capacity
+  and the "other" place price in force then, stored on the row); reads never recompute, only a price override edit
+  does; changing the capacity later does not rewrite history (like trips).
 - `poller.py`: background thread; reads state (REST + MQTT pushes, MQTT handled off the paho thread), feeds the
   engine at planned events, persists rotated tokens, raises health alerts. It wakes the car only when plugged
   in/unknown and near a planned event (plus one follow-up 3 min after each), while a verification is pending,

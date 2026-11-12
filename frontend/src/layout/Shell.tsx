@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { Suspense } from 'react'
 import { Link, Navigate, Outlet, useLocation } from 'react-router'
 import { apiGet, type AuthState } from '../api'
 import { useStatus } from '../useStatus'
@@ -38,7 +39,9 @@ export function Shell() {
       <main className="min-w-0 flex-1 p-6">
         <FakeBanner />
         <NoCarNotice />
-        <Outlet />
+        <Suspense fallback={<p>A carregar…</p>}>
+          <Outlet />
+        </Suspense>
       </main>
     </div>
   )

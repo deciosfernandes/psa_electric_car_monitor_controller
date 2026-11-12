@@ -126,3 +126,13 @@ def test_position_fix_roundtrip():
     fix = PositionFix(lat=10.0, lon=20.0, at=NOW, mileage_km=5.0)
     store.set_position_fix(fix)
     assert store.get_position_fix() == fix
+
+
+def test_update_fix_normalises_naive_times_to_utc():
+    stored = PositionFix(lat=1, lon=1, at=datetime(2026, 11, 12, 10, 0), mileage_km=1000.0)  # naive = UTC
+    older = car(latitude=1.0, longitude=1.0, position_at=datetime(2026, 11, 12, 9, 0, tzinfo=timezone.utc))
+    newer = car(latitude=1.0, longitude=1.0, position_at=datetime(2026, 11, 12, 11, 0, tzinfo=timezone.utc))
+    assert update_fix(older, stored) is None
+    assert update_fix(newer, stored).at == newer.position_at
+    naive_new = car(latitude=1.0, longitude=1.0, position_at=datetime(2026, 11, 12, 12, 0))
+    assert update_fix(naive_new, PositionFix(lat=1, lon=1, at=newer.position_at)) is not None

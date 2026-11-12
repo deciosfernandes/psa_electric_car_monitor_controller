@@ -13,11 +13,19 @@ _ALL = 1_000_000  # history is kept forever and is small (one car): aggregate in
 
 
 class Price(BaseModel):
-    eur_kwh: float = Field(ge=0, le=10)
+    eur_kwh: float | None = Field(ge=0, le=10)  # null clears the override
 
 
 def _month(dt: datetime) -> str:
     return dt.astimezone(TZ).strftime("%Y-%m")
+
+
+def _month_bounds(month: str) -> tuple[datetime, datetime]:
+    """[start, end) of an Azores calendar month, as UTC."""
+    year, mon = int(month[:4]), int(month[5:])
+    start = datetime(year, mon, 1, tzinfo=TZ)
+    end = datetime(year + (mon == 12), mon % 12 + 1, 1, tzinfo=TZ)
+    return start.astimezone(UTC), end.astimezone(UTC)
 
 
 def _l100(km: float, kwh: float) -> float | None:
@@ -26,15 +34,13 @@ def _l100(km: float, kwh: float) -> float | None:
 
 @router.get("/charges")
 def charges(limit: int = Query(50, ge=1, le=500), offset: int = Query(0, ge=0)) -> list:
-    return to_json([store.recompute_session_cost(c) for c in store.charge_sessions(limit, offset)])
+    return to_json(store.charge_sessions(limit, offset))  # kwh and cost are frozen when the session ends
 
 
 @router.get("/charges/summary")
 def charges_summary(month: str | None = Query(None, pattern=r"^\d{4}-(0[1-9]|1[0-2])$")) -> dict:
     month = month or _month(datetime.now(UTC))
-    rows = [
-        store.recompute_session_cost(c) for c in store.charge_sessions(_ALL) if _month(c.started_at) == month
-    ]
+    rows = store.charge_sessions_between(*_month_bounds(month))
     kwh = sum(c.kwh or 0.0 for c in rows)
     home = [c for c in rows if c.place_kind == "home"]
     home_kwh = sum(c.kwh or 0.0 for c in home)

@@ -84,8 +84,9 @@ def test_decide_work_charge_once():
 
 
 def test_decide_other_place_no_command():
-    assert run_at("other", at(1)) == Decision(None, "Fora de Casa")
-    assert run_at("other", at(1), car(soc=90)) == Decision(None, "Fora de Casa")  # never defer outside Casa
+    assert run_at("other", at(1)) == Decision(None, "Fora de Casa (local desconhecido)")
+    # never defer outside Casa
+    assert run_at("other", at(1), car(soc=90)) == Decision(None, "Fora de Casa (local desconhecido)")
 
 
 def test_decide_other_place_manual_override_charges():
@@ -102,3 +103,8 @@ def test_decide_manual_override_charges_everywhere():
         assert run_at(where, at(12), car(soc=95), override=OVR) == Decision("charge", "Carga manual ativa"), where
     assert run_at("work", override=OVR, work_charge_sent=True) == Decision("charge", "Carga manual ativa")
     assert run_at("unknown", c=car(plugged=False), override=OVR) == Decision(None, "Cabo desligado", True)
+
+
+def test_decide_other_place_reason_includes_name():
+    d = decide(at(1), CFG, EDA_TRI_SEMANAL, car(), None, "other", False, "Ginásio")
+    assert d == Decision(None, "Fora de Casa (Ginásio)")
