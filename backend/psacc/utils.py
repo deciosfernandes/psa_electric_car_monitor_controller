@@ -1,6 +1,5 @@
 from functools import wraps
 from threading import Semaphore, Timer
-from typing import List
 
 TIMEOUT_IN_S = 10
 
@@ -24,24 +23,6 @@ def rate_limit(limit, every):
         return wrapper
 
     return limit_decorator
-
-
-def parse_hour(s):
-    s = s[2:]
-    separators = ("H", "M", "S")
-    res: List[int] = []
-    for sep in separators:
-        if sep in s:
-            n, s = s.split(sep)
-        else:
-            n = 0
-        res.append(int(n))
-        if s.isnumeric():
-            res.append(int(s))
-            break
-    if len(res) == 2:
-        res.append(0)
-    return res
 
 
 class RateLimitException(Exception):

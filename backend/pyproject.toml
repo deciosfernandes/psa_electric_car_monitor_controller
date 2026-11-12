@@ -18,12 +18,9 @@ dependencies = [
     "pycryptodomex==3.23.0",
     "oauth2-client",
     "androguard",
-    "python-dateutil",
     "playwright; platform_machine != 'armv7l'",
     "itsdangerous",
     "ruamel.yaml",
-    "urllib3<2",
-    "six",
     "certifi",
     "tzdata",
 ]
@@ -33,6 +30,7 @@ dev = ["pytest", "ruff", "httpx"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["psacc"]
+exclude = ["psacc/psa/api-b2c-*.yaml"]  # API reference only, not needed at runtime
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -41,7 +39,6 @@ filterwarnings = ["ignore:Using `httpx` with `starlette.testclient` is deprecate
 
 [tool.ruff]
 line-length = 120
-extend-exclude = ["psacc/psa/connected_car_api"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W"]

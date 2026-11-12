@@ -14,7 +14,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 COPY backend/ /app/backend/
-RUN pip install --no-cache-dir ./backend
+RUN pip install --no-cache-dir -c backend/requirements.lock ./backend
 
 # Headless Chromium for the PSA login, in a path readable by the unprivileged app user. Not available on
 # armv7: skipped there (the setup falls back to the manual flow); on other architectures a failure fails the build.
