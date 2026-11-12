@@ -794,7 +794,7 @@ def test_engine_records_trip_and_survives_trip_store_failure(monkeypatch):
 def test_pause_logged_once_per_transition_and_home_return_logged():
     engine, gw, *_ = make(car=at_place(HOME, plugged=True, charging=False))
     engine.on_status(gw.snap)
-    assert not [m for m in messages() if "Em pausa" in m or "Em Casa" in m]  # first fix at Casa: nothing to say
+    assert not [m for m in messages() if "em pausa" in m or "Em Casa" in m]  # first fix at Casa: nothing to say
     gw.snap = at_place(OTHER, minutes=30, plugged=True, charging=False)
     engine.tick()
     engine.tick()
@@ -807,9 +807,11 @@ def test_pause_logged_once_per_transition_and_home_return_logged():
 
 
 def test_pause_logged_when_no_home_defined():
+    engine, gw, *_ = make()
+    engine.tick()
+    assert not [m for m in messages() if "em pausa" in m]  # startup is not a transition
     for p in store.list_places():
         store.delete_place(p.id)
-    engine, gw, *_ = make()
     engine.tick()
     engine.tick()
     assert messages().count("Automação em pausa: Defina o local Casa") == 1
@@ -822,3 +824,13 @@ def test_health_sample_stored_under_azores_date():
     gw.snap = snap(battery_health=92.0, at=late + timedelta(hours=1))  # 00:30 on 13/11 in the Azores
     engine.on_status(gw.snap)
     assert store.health_samples() == [(date(2026, 11, 12), 93.0), (date(2026, 11, 13), 92.0)]
+
+
+def test_arriving_at_work_logs_work_specific_pause_text():
+    add_work()
+    engine, gw, *_ = make(car=at_place(HOME, plugged=True, charging=False))
+    engine.on_status(gw.snap)
+    gw.snap = at_place(WORK, minutes=30, plugged=True, charging=False)
+    engine.tick()
+    assert "No Trabalho — automação de Casa em pausa" in messages()
+    assert not [m for m in messages() if "carga já pedida" in m]

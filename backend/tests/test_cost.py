@@ -96,3 +96,11 @@ def test_home_cost_never_exceeds_session_kwh_with_soc_dip():
     ]
     cost = session_cost(make(), dip, TARIFF, 46)  # session.kwh = 23.0 (50 %), all parts at vazio 0.10
     assert cost == pytest.approx(23.0 * 0.10)
+
+
+def test_home_cost_when_samples_show_no_rise_uses_start_period():
+    flat = [
+        ChargeSample(session_id=1, at=local(1, 0), soc=70, rate_kmh=0),
+        ChargeSample(session_id=1, at=local(2, 0), soc=70, rate_kmh=0),
+    ]
+    assert session_cost(make(), flat, TARIFF, 46) == pytest.approx(23.0 * 0.10)  # started at vazio

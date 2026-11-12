@@ -333,11 +333,15 @@ class Engine:
         previous = self.last_where
         self.last_where, self.last_place = locate(now, car, fix, store.list_places())
         if self.last_where != previous:
-            if self.last_where != "home":
+            if previous is None:
+                pass  # first evaluation after startup is not a transition
+            elif self.last_where == "home":
+                store.log_activity("info", "Em Casa — automação ativa", at=now)
+            elif self.last_where == "work":
+                store.log_activity("info", "No Trabalho — automação de Casa em pausa", at=now)
+            else:
                 reason = not_home_reason(self.last_where, self.last_place.name if self.last_place else None)
                 store.log_activity("info", f"Automação em pausa: {reason}", at=now)
-            elif previous is not None:
-                store.log_activity("info", "Em Casa — automação ativa", at=now)
         return self.last_where
 
     def _work_charge_sent(self, car: CarSnapshot, where: Where) -> bool:

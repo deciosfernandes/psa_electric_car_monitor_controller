@@ -458,7 +458,13 @@ def charge_samples(session_id: int) -> list[ChargeSample]:
         return [ChargeSample(**{**r.model_dump(), "at": _utc(r.at)}) for r in s.exec(q).all()]
 
 
+def _other_place_price(name: str | None) -> float | None:
+    return next((p.price_eur_kwh for p in list_places() if p.name == name and p.kind == "other"), None)
+
+
 def _priced(c: ChargeSession) -> ChargeSession:
+    if c.place_kind == "other" and c.place_price_eur_kwh is None:  # row from before the price was stored
+        c = c.model_copy(update={"place_price_eur_kwh": _other_place_price(c.place_name)})
     samples = charge_samples(c.id) if c.id is not None else []
     cost = session_cost(c, samples, get_tariff(), get_config().battery_capacity_kwh, c.place_price_eur_kwh)
     return c.model_copy(update={"cost_eur": cost})
@@ -472,7 +478,7 @@ def refresh_session_cost(c: ChargeSession) -> ChargeSession:
         kwh = session_kwh(c.soc_start, c.soc_end, get_config().battery_capacity_kwh)
         c = c.model_copy(update={"kwh": kwh})
     if c.place_kind == "other":
-        price = next((p.price_eur_kwh for p in list_places() if p.name == c.place_name and p.kind == "other"), None)
+        price = _other_place_price(c.place_name)
         if price is not None:
             c = c.model_copy(update={"place_price_eur_kwh": price})
     return _priced(c)

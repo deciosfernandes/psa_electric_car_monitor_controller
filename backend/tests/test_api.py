@@ -707,3 +707,13 @@ def test_put_price_requires_csrf_header(logged):
 def test_charges_expose_partial_flag(logged):
     _seed_history()
     assert all(isinstance(r["partial"], bool) for r in logged.get("/api/charges").json())
+
+
+def test_clearing_override_on_migrated_other_session_uses_current_place_price(logged):
+    s = _other_session(price=0.3)
+    # pre-migration row
+    migrated = store.save_charge_session(s.model_copy(update={"place_price_eur_kwh": None, "cost_eur": None}))
+    url = f"/api/charges/{migrated.id}/price"
+    assert logged.put(url, json={"eur_kwh": 0.5}).json()["cost_eur"] == pytest.approx(11.5)
+    r = logged.put(url, json={"eur_kwh": None}).json()
+    assert r["cost_eur"] == pytest.approx(6.9) and r["place_price_eur_kwh"] == 0.3

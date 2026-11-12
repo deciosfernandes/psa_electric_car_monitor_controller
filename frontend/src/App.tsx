@@ -1,4 +1,4 @@
-import { lazy, Suspense } from 'react'
+import { lazy } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter, Route, Routes } from 'react-router'
 import { Shell } from './layout/Shell'
@@ -18,7 +18,6 @@ export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
-        <Suspense fallback={<p className="p-6">A carregar…</p>}>
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route element={<Shell />}>
@@ -31,7 +30,6 @@ export default function App() {
             <Route path="definicoes" element={<Definicoes />} />
           </Route>
         </Routes>
-        </Suspense>
       </BrowserRouter>
     </QueryClientProvider>
   )
