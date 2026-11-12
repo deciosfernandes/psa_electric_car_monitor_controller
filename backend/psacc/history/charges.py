@@ -54,13 +54,18 @@ class ChargeDetector:
         self.current = open_session  # resumed after a restart: the charge is not "first seen" again
         self._seen = open_session is not None
         self._last_at: datetime | None = None
+        self._last_status_at: datetime | None = None
         self._last_soc: float | None = None
         self._last_rate: float | None = None
         self._stops = 0
 
     def feed(self, snap: CarSnapshot, where: Where, place: Place | None) -> list[ChargeEvent]:
         at = snap.energy_at or snap.at
+        newer_status = self._last_status_at is None or snap.at > self._last_status_at
+        self._last_status_at = max(snap.at, self._last_status_at or snap.at)
         if self._last_at is not None and at <= self._last_at:
+            if snap.plugged is False and self.current is not None and newer_status:
+                return self._end(snap.soc, snap.at)  # an unplug is not held back by a stale electric block
             return []  # nothing new from the car
         prev_at, prev_soc, prev_rate = self._last_at, self._last_soc, self._last_rate
         self._last_at = at

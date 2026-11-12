@@ -55,18 +55,22 @@ def place_at(lat: float, lon: float, places: list[Place]) -> Place | None:
     return min(inside, key=lambda dp: dp[0])[1] if inside else None
 
 
+def _utc(t: datetime) -> datetime:
+    return t if t.tzinfo else t.replace(tzinfo=timezone.utc)  # naive values are UTC
+
+
 def update_fix(car: CarSnapshot, fix: PositionFix | None) -> PositionFix | None:
     """A new fix if the car reports a position newer than the stored one, else None (nothing to store)."""
     if car.latitude is None or car.longitude is None or car.position_at is None:
         return None
-    if fix is not None and car.position_at <= fix.at:
+    if fix is not None and _utc(car.position_at) <= _utc(fix.at):
         return None
     return PositionFix(lat=car.latitude, lon=car.longitude, at=car.position_at, mileage_km=car.mileage_km)
 
 
 def fix_is_stale(now: datetime, fix: PositionFix, mileage_km: float | None) -> bool:
     """An old fix only holds while both odometers prove the car has not moved."""
-    fix_at = fix.at if fix.at.tzinfo else fix.at.replace(tzinfo=timezone.utc)  # naive values are UTC
+    fix_at = _utc(fix.at)
     return now - fix_at > STALE_FIX and (
         mileage_km is None or fix.mileage_km is None or abs(mileage_km - fix.mileage_km) > MOVED_KM
     )

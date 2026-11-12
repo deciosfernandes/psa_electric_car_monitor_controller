@@ -1,5 +1,5 @@
 import dataclasses
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 
@@ -813,3 +813,12 @@ def test_pause_logged_when_no_home_defined():
     engine.tick()
     engine.tick()
     assert messages().count("Automação em pausa: Defina o local Casa") == 1
+
+
+def test_health_sample_stored_under_azores_date():
+    late = datetime(2026, 11, 13, 0, 30, tzinfo=UTC)  # 23:30 on 12/11 in the Azores
+    engine, gw, *_ = make(car=snap(battery_health=93.0, at=late))
+    engine.on_status(gw.snap)
+    gw.snap = snap(battery_health=92.0, at=late + timedelta(hours=1))  # 00:30 on 13/11 in the Azores
+    engine.on_status(gw.snap)
+    assert store.health_samples() == [(date(2026, 11, 12), 93.0), (date(2026, 11, 13), 92.0)]
