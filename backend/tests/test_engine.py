@@ -321,3 +321,92 @@ def test_automation_off_does_nothing():
     engine, gw, *_ = make()
     engine.tick()
     assert charge_calls(gw) == []
+
+
+def test_unknown_state_does_not_cancel_round():
+    engine, gw, notifier, *_ = make()
+    gw.fail_next = 3
+    known = gw.snap
+    unknown = snap(plugged=None, soc=None, charging=True, charge_status="InProgress")
+    engine.tick()
+    for _ in range(3):
+        engine.on_status(unknown)  # e.g. a partial MQTT push between polls
+        engine.on_status(known)
+        engine.tick()
+        engine.verify_now()
+    assert len(charge_calls(gw)) == 3
+    assert notifier.alerts == [ALERT_DEFER]
+
+
+def test_scheduler_failure_does_not_block_later_ticks():
+    gw = FakeGateway(snap(plugged=True, charging=True, charge_status="InProgress"))
+    sched = FakeScheduler()
+    failing = {"left": 1}
+
+    def flaky(delay_s, fn):
+        if failing["left"]:
+            failing["left"] -= 1
+            raise RuntimeError("cannot start timer")
+        return sched(delay_s, fn)
+
+    engine = Engine(gw, FakeNotifier(), clock=Clock(thu(19)), scheduler=flaky)
+    engine.tick()
+    engine.tick()
+    assert len(charge_calls(gw)) == 2
+    assert sched.delays == [RETRY_DELAYS_S[0]]
+
+
+def test_store_failure_mid_step_does_not_block_later_ticks(monkeypatch):
+    engine, gw, notifier, sched, _ = make()
+    gw.fail_next = 1
+    engine.tick()
+    real = store.set_last_command
+    calls = {"n": 0}
+
+    def flaky(c):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("database is locked")
+        real(c)
+
+    monkeypatch.setattr(store, "set_last_command", flaky)
+    engine.verify_now()  # re-send raises while persisting
+    engine.tick()
+    assert len(charge_calls(gw)) == 3
+    assert sched.delays[-1] == 60
+
+
+def test_unplug_clears_override_even_with_automation_off():
+    engine, gw, *_ = make(car=snap(plugged=True, charging=False, soc=70.0))
+    store.set_override(store.Override(started_at=thu(18), reason="manual"))
+    store.save_config(AppConfig(automation_enabled=False))
+    engine.on_status(snap(plugged=False, charging=False, charge_status="Disconnected"))
+    assert store.get_override() is None
+    assert "Carga manual cancelada (cabo desligado)" in messages()
+
+
+def test_manual_charge_with_automation_off_sends_once_without_override():
+    store.save_config(AppConfig(automation_enabled=False))
+    engine, gw, notifier, sched, _ = make(car=snap(plugged=True, charging=False, soc=70.0))
+    engine.manual_charge()
+    assert store.get_override() is None
+    assert "Carga manual iniciada (automação desligada)" in messages()
+    assert charge_calls(gw) == [("set_charge_mode", "charge", (0, 10))]
+    engine.tick()  # "Automação desligada" must not cancel the manual round
+    engine.verify_now()  # not applied -> retry later
+    engine.verify_now()  # attempt 2
+    assert len(charge_calls(gw)) == 2
+    gw.snap = dataclasses.replace(gw.snap, charging=True, charge_status="InProgress")
+    engine.verify_now()
+    assert store.get_last_command().verified is True
+    assert "Carga manual → diferido desligado" in messages("action")
+    engine.tick()
+    assert len(charge_calls(gw)) == 2
+
+
+def test_manual_charge_refused_when_unplugged():
+    engine, gw, *_ = make(car=snap(plugged=False, charging=False, charge_status="Disconnected"))
+    engine.manual_charge()
+    assert store.get_override() is None
+    assert "Carga manual ignorada: cabo desligado" in messages()
+    assert charge_calls(gw) == []

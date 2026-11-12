@@ -72,6 +72,7 @@ class _Round:
     mode: Mode
     reason: str
     alerted: bool
+    manual: bool = False  # started by manual_charge() with automation off: not cancelled by "Automação desligada"
     attempts: int = 0
     phase: Literal["verify", "retry"] = "verify"
     sent_at: datetime | None = None
@@ -118,8 +119,21 @@ class Engine:
     def manual_charge(self) -> None:
         with self._lock:
             try:
+                car = self._snapshot(refresh=False)
+                if car is not None and car.plugged is False:
+                    store.log_activity("info", "Carga manual ignorada: cabo desligado", at=self._clock())
+                    return
+                if not store.get_config().automation_enabled:
+                    # no override: nothing would ever end it; just send "charge" once, verified and retried
+                    store.log_activity("info", "Carga manual iniciada (automação desligada)", at=self._clock())
+                    self._cancel_round()
+                    self._start_round(Decision("charge", "Carga manual"), store.get_last_command(), manual=True)
+                    return
                 store.set_override(Override(started_at=self._clock(), reason="manual"))
                 store.log_activity("info", "Carga manual iniciada", at=self._clock())
+                if car is not None:
+                    self._evaluate(car)
+                    return
             except Exception:
                 logger.exception("could not start manual charge")
                 return
@@ -145,6 +159,7 @@ class Engine:
                     self._step(self._round)
             except Exception:
                 logger.exception("automation verification failed")
+                self._cancel_round()  # the next tick starts afresh (the last command is still unverified)
 
     # ---- internals (called with the lock held) ---------------------------------------------------------
 
@@ -166,12 +181,25 @@ class Engine:
 
     def _evaluate(self, car: CarSnapshot) -> None:
         now = self._clock()
+        cfg = store.get_config()
         override = store.get_override()
-        decision = decide(now, store.get_config(), store.get_tariff(), car, override)
+        if car.plugged is False and override is not None:
+            store.set_override(None)
+            store.log_activity("info", "Carga manual cancelada (cabo desligado)", at=now)
+            override = None
+        decision = decide(now, cfg, store.get_tariff(), car, override)
         if decision.clear_override and override is not None:
             store.set_override(None)
+        if self._round is not None and self._round.timer is None:
+            # a round always has an armed timer between steps; without one it died mid-step
+            logger.warning("dropping %s round left without a timer", self._round.mode)
+            self._round = None
         if decision.mode is None:
-            self._cancel_round()
+            # unknown car state keeps the round going; only unplugging or switching automation off ends it
+            if self._round is not None and (
+                car.plugged is False or (not cfg.automation_enabled and not self._round.manual)
+            ):
+                self._cancel_round()
             return
         if self._round is not None:
             if self._round.mode == decision.mode:
@@ -189,10 +217,16 @@ class Engine:
         stale = now - last.at > timedelta(seconds=self.verify_delay_s * 3)
         return not car.charging and car.charge_status != "Finished" and stale
 
-    def _start_round(self, decision: Decision, last: LastCommand | None) -> None:
+    def _start_round(self, decision: Decision, last: LastCommand | None, manual: bool = False) -> None:
         # the alert flag is cleared on every verified success, so carrying it over keeps one alert per episode
-        self._round = _Round(mode=decision.mode, reason=decision.reason, alerted=bool(last and last.alerted))
-        self._attempt(self._round)
+        self._round = _Round(
+            mode=decision.mode, reason=decision.reason, alerted=bool(last and last.alerted), manual=manual
+        )
+        try:
+            self._attempt(self._round)
+        except Exception:
+            self._cancel_round()  # never leave a round without an armed timer: it would block every later tick
+            raise
 
     def _cancel_round(self) -> None:
         if self._round is not None and self._round.timer is not None:
