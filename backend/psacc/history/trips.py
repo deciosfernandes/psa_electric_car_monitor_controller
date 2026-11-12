@@ -31,8 +31,8 @@ class Trip(BaseModel):
     km: float
     soc_start: float | None = None
     soc_end: float | None = None
-    kwh: float
-    kwh_100km: float
+    kwh: float | None = None  # None = unknown (no SoC at one end)
+    kwh_100km: float | None = None
 
 
 @dataclass
@@ -93,7 +93,7 @@ class TripDetector:
         if km < MIN_KM:
             return None
         s0, s1 = start.snap.soc, moved.snap.soc  # soc at arrival: later charging must not hide the drive's use
-        kwh = max(0.0, s0 - s1) / 100 * self.capacity if s0 is not None and s1 is not None else 0.0
+        kwh = max(0.0, s0 - s1) / 100 * self.capacity if s0 is not None and s1 is not None else None
         return Trip(
             departed_at=start.snap.at,
             arrived_at=moved.snap.at,
@@ -109,5 +109,5 @@ class TripDetector:
             soc_start=s0,
             soc_end=s1,
             kwh=kwh,
-            kwh_100km=kwh / km * 100,
+            kwh_100km=kwh / km * 100 if kwh is not None else None,
         )

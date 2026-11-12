@@ -78,6 +78,19 @@ def test_trip_without_soc_drop_kwh_zero():
     assert len(trips) == 1 and trips[0].kwh == 0 and trips[0].kwh_100km == 0
 
 
+def test_trip_with_unknown_soc_has_unknown_energy():
+    d = TripDetector(46)
+    trips = run(
+        d,
+        [
+            (snap(0, 1000, soc=None), "home", HOME),
+            (snap(20, 1005, soc=None), "work", WORK),
+            (snap(40, 1005, soc=None), "work", WORK),
+        ],
+    )
+    assert len(trips) == 1 and trips[0].kwh is None and trips[0].kwh_100km is None
+
+
 def test_charging_during_parked_not_a_trip():
     d = TripDetector(46)
     trips = run(

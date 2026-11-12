@@ -46,7 +46,7 @@ export default function Painel() {
         {pill && <StatusPill state={pill} />}
       </div>
 
-      {status.where === 'unset' && <HomeBanner />}
+      {status.where === 'unset' && <HomeBanner positionAgeMin={status.position_age_min} />}
 
       <div className="grid gap-[14px] md:grid-cols-3">
         <div className="card">

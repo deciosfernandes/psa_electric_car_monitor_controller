@@ -20,6 +20,19 @@ const trip = {
 }
 
 describe('Viagens', () => {
+  it('shows a dash for unknown energy', async () => {
+    const unknown = { ...trip, soc_start: null, soc_end: null, kwh: null, kwh_100km: null }
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify([unknown]), { status: 200 })))
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <Viagens />
+      </QueryClientProvider>,
+    )
+    expect(await screen.findByText('≈ 14,2 km')).toBeTruthy()
+    expect(screen.getAllByText('—').length).toBeGreaterThanOrEqual(3)
+  })
+
+
   it('renders trips as approximate and shows both markers on selection', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify([trip]), { status: 200 })))
     render(

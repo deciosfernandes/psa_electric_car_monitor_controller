@@ -24,6 +24,7 @@ export default function Login() {
       await apiSend('POST', first ? '/api/auth/setup' : '/api/auth/login', { password })
       if (first) await apiSend('POST', '/api/auth/login', { password })
       await queryClient.invalidateQueries({ queryKey: ['auth'] })
+      void queryClient.invalidateQueries({ queryKey: ['status'] })
       navigate('/', { replace: true })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Não foi possível iniciar sessão')

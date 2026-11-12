@@ -196,8 +196,8 @@ export interface Trip {
   km: number
   soc_start: number | null
   soc_end: number | null
-  kwh: number
-  kwh_100km: number
+  kwh: number | null // null = unknown (no SoC at one end)
+  kwh_100km: number | null
 }
 
 export interface ConsumptionMonth {

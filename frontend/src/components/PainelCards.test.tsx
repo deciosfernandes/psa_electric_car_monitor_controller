@@ -79,7 +79,8 @@ describe('Painel cards', () => {
 
   it('home banner posts from-car as Casa', async () => {
     const f = stubFetch()
-    wrap(<HomeBanner />)
+    wrap(<HomeBanner positionAgeMin={5} />)
+    expect(screen.getByText('Posição do carro há 5 min')).toBeTruthy()
     expect(screen.getByText('Defina o local Casa')).toBeTruthy()
     fireEvent.click(screen.getByRole('button'))
     await waitFor(() => expect(f).toHaveBeenCalled())

@@ -151,8 +151,8 @@ class TripRow(SQLModel, table=True):
     km: float
     soc_start: float | None = None
     soc_end: float | None = None
-    kwh: float
-    kwh_100km: float
+    kwh: float | None = None
+    kwh_100km: float | None = None
 
 
 _engine = None
@@ -174,6 +174,7 @@ def init_db(url: str | None = None) -> None:
     _engine = create_engine(url, **kwargs)
     SQLModel.metadata.create_all(_engine)
     _add_activity_source(_engine)
+    _make_trip_energy_nullable(_engine)
     _restrict_db_file(url)
     _ensure_config()
 
@@ -184,6 +185,20 @@ def _add_activity_source(engine) -> None:
         return
     with engine.begin() as conn:
         conn.execute(text("ALTER TABLE activityrow ADD COLUMN source VARCHAR NOT NULL DEFAULT 'automation'"))
+
+
+def _make_trip_energy_nullable(engine) -> None:
+    """Trip tables created while kwh was mandatory are rebuilt (SQLite cannot drop NOT NULL in place)."""
+    cols = {c["name"]: c for c in inspect(engine).get_columns("triprow")}
+    if cols["kwh"]["nullable"]:
+        return
+    with engine.begin() as conn:
+        conn.execute(text("ALTER TABLE triprow RENAME TO triprow_old"))
+        conn.execute(text("DROP INDEX IF EXISTS ix_triprow_departed_at"))
+    SQLModel.metadata.tables["triprow"].create(engine)
+    with engine.begin() as conn:
+        conn.execute(text("INSERT INTO triprow SELECT * FROM triprow_old"))
+        conn.execute(text("DROP TABLE triprow_old"))
 
 
 def _restrict_db_file(url: str) -> None:

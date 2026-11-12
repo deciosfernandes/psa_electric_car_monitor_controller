@@ -1,10 +1,12 @@
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException
+from datetime import UTC, datetime
+
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, ValidationError
 
 from .. import store
-from ..places import Place
+from ..places import Place, fix_is_stale
 from . import to_json, unprocessable
 
 router = APIRouter(prefix="/api/places")
@@ -47,10 +49,14 @@ def delete_place(place_id: int) -> dict:
 
 
 @router.post("/from-car")
-def place_from_car(body: FromCar) -> dict:
+def place_from_car(body: FromCar, request: Request) -> dict:
     fix = store.get_position_fix()
     if fix is None:
         raise HTTPException(status_code=409, detail="Posição do carro desconhecida")
+    poller = request.app.state.poller
+    car = poller.latest() if poller is not None else None
+    if fix_is_stale(datetime.now(UTC), fix, car.mileage_km if car is not None else None):
+        raise HTTPException(status_code=409, detail="Posição do carro desatualizada")
     try:
         place = Place(name=body.name, kind=body.kind, lat=fix.lat, lon=fix.lon)
     except ValidationError as exc:

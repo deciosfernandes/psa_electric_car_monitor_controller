@@ -10,7 +10,7 @@ function nextEventText(at: string, action: keyof typeof ACTION_TEXT): string {
   return `${ACTION_TEXT[action]} ${sameDay ? 'às' : `a ${fmtDate(at).slice(0, 5)} às`} ${fmtHour(at)}`
 }
 
-function ageText(min: number | null): string | null {
+export function ageText(min: number | null): string | null {
   if (min === null) return null
   if (min < 1) return 'agora mesmo'
   return min < 60 ? `há ${min} min` : `há ${Math.floor(min / 60)} h`
@@ -56,7 +56,7 @@ export function HealthCard({ status }: { status: Status }) {
   )
 }
 
-export function HomeBanner() {
+export function HomeBanner({ positionAgeMin = null }: { positionAgeMin?: number | null }) {
   const qc = useQueryClient()
   const define = useMutation({
     mutationFn: () => apiSend<Place>('POST', '/api/places/from-car', { name: 'Casa', kind: 'home' }),
@@ -67,6 +67,7 @@ export function HomeBanner() {
       <div className="flex-1 text-sm">
         <b>Defina o local Casa</b>
         <div className="text-xs text-muted">A automação só atua em Casa. Com o carro estacionado em casa, use a posição atual.</div>
+        {ageText(positionAgeMin) && <div className="text-xs text-muted">Posição do carro {ageText(positionAgeMin)}</div>}
         {define.isError && (
           <div role="alert" className="mt-1 text-xs font-semibold text-danger-ink">
             {define.error instanceof Error ? define.error.message : 'Erro inesperado'}

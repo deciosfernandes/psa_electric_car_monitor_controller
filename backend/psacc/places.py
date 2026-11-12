@@ -64,15 +64,20 @@ def update_fix(car: CarSnapshot, fix: PositionFix | None) -> PositionFix | None:
     return PositionFix(lat=car.latitude, lon=car.longitude, at=car.position_at, mileage_km=car.mileage_km)
 
 
+def fix_is_stale(now: datetime, fix: PositionFix, mileage_km: float | None) -> bool:
+    """An old fix only holds while both odometers prove the car has not moved."""
+    fix_at = fix.at if fix.at.tzinfo else fix.at.replace(tzinfo=timezone.utc)  # naive values are UTC
+    return now - fix_at > STALE_FIX and (
+        mileage_km is None or fix.mileage_km is None or abs(mileage_km - fix.mileage_km) > MOVED_KM
+    )
+
+
 def locate(now: datetime, car: CarSnapshot, fix: PositionFix | None, places: list[Place]) -> tuple[Where, Place | None]:
     if not any(p.kind == "home" for p in places):
         return "unset", None
     if fix is None:
         return "unknown", None
-    fix_at = fix.at if fix.at.tzinfo else fix.at.replace(tzinfo=timezone.utc)  # naive values are UTC
-    if now - fix_at > STALE_FIX and (
-        car.mileage_km is None or fix.mileage_km is None or abs(car.mileage_km - fix.mileage_km) > MOVED_KM
-    ):
-        return "unknown", None  # an old fix only holds while both odometers prove the car has not moved
+    if fix_is_stale(now, fix, car.mileage_km):
+        return "unknown", None
     place = place_at(fix.lat, fix.lon, places)
     return (place.kind, place) if place else ("other", None)

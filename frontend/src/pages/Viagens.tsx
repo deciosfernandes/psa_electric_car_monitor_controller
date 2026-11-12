@@ -43,8 +43,8 @@ export default function Viagens() {
                   </td>
                   <td className="pr-3">≈ {fmtNum(t.km)} km</td>
                   <td className="pr-3">{t.soc_start != null && t.soc_end != null ? `${Math.round(t.soc_start - t.soc_end)} %` : '—'}</td>
-                  <td className="pr-3">{fmtNum(t.kwh)}</td>
-                  <td>{fmtNum(t.kwh_100km)}</td>
+                  <td className="pr-3">{t.kwh != null ? fmtNum(t.kwh) : '—'}</td>
+                  <td>{t.kwh_100km != null ? fmtNum(t.kwh_100km) : '—'}</td>
                 </tr>
               ))}
               {rows.length === 0 && (

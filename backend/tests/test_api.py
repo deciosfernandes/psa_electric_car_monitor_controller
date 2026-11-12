@@ -477,6 +477,35 @@ def test_places_from_car(logged):
     assert (r.json()["lat"], r.json()["lon"], r.json()["kind"]) == (10.5, 20.5, "work")
 
 
+def test_places_from_car_rejects_stale_fix(logged, monkeypatch):
+    old = datetime.now(timezone.utc) - timedelta(hours=3)
+    store.set_position_fix(store.PositionFix(lat=10.5, lon=20.5, at=old, mileage_km=100.0))
+    body = {"name": "Casa", "kind": "home"}
+    for mileage in (None, 150.0):  # odometer unknown or moved: the stored fix no longer holds
+        snap = dataclasses.replace(default_snapshot("V"), mileage_km=mileage)
+        monkeypatch.setattr(logged.app.state.poller, "latest", lambda snap=snap: snap)
+        r = logged.post("/api/places/from-car", json=body)
+        assert r.status_code == 409 and r.json()["detail"] == "Posição do carro desatualizada"
+    monkeypatch.setattr(
+        logged.app.state.poller, "latest", lambda: dataclasses.replace(default_snapshot("V"), mileage_km=100.0)
+    )
+    assert logged.post("/api/places/from-car", json=body).status_code == 200  # odometer unchanged: still valid
+
+
+def test_consumption_ignores_trips_with_unknown_energy(logged):
+    from psacc.history.trips import Trip
+
+    now = datetime.now(timezone.utc)
+    for km, kwh in ((10.0, 2.0), (50.0, None)):
+        store.save_trip(
+            Trip(departed_at=now - timedelta(hours=2), arrived_at=now - timedelta(hours=1), from_kind="home",
+                 to_kind="work", km=km, kwh=kwh, kwh_100km=None if kwh is None else kwh / km * 100)
+        )
+    c = logged.get("/api/consumption").json()["last30"]
+    assert c["km"] == 10.0 and c["kwh"] == 2.0 and c["kwh_100km"] == pytest.approx(20.0)
+    assert sorted(t["kwh"] is None for t in logged.get("/api/trips").json()) == [False, True]
+
+
 def test_settings_capacity_range_and_keep(logged):
     base = {"discord_info": False, "refresh_min": 5}
     for bad in (9.9, 150.1):

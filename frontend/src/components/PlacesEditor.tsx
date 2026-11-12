@@ -1,7 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { apiGet, apiSend, type Place } from '../api'
+import { useStatus } from '../useStatus'
 import { MiniMap } from './MiniMap'
+import { ageText } from './PainelCards'
 
 const KIND_TEXT = { home: 'Casa', work: 'Trabalho', other: 'Outro' } as const
 const errorText = (e: unknown) => (e instanceof Error ? e.message : 'Erro inesperado')
@@ -12,6 +14,7 @@ const blank = (): Place => ({ id: null, name: '', kind: 'other', lat: 37.74, lon
 export function PlacesEditor() {
   const qc = useQueryClient()
   const places = useQuery({ queryKey: ['places'], queryFn: () => apiGet<Place[]>('/api/places') })
+  const age = ageText(useStatus().data?.position_age_min ?? null)
   const [draft, setDraft] = useState<Place | null>(null)
   const done = () => {
     resetErrors()
@@ -123,7 +126,7 @@ export function PlacesEditor() {
             </button>
             {draft.id === null && (
               <button type="button" className="btn" disabled={draft.name.trim() === '' || busy} onClick={() => fromCar.mutate(draft)}>
-                Usar posição atual do carro
+                Usar posição atual do carro{age && ` (${age})`}
               </button>
             )}
             <button type="button" className="btn" onClick={() => open(null)}>

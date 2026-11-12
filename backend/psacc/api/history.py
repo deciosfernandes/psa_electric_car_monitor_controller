@@ -77,9 +77,12 @@ def consumption() -> dict:
     all_trips = store.trips(_ALL)
     since = datetime.now(UTC) - timedelta(days=30)
     recent = [t for t in all_trips if t.departed_at.replace(tzinfo=t.departed_at.tzinfo or UTC) >= since]
-    km, kwh = sum(t.km for t in recent), sum(t.kwh for t in recent)
+    known = [t for t in recent if t.kwh is not None]  # unknown energy must not dilute the average
+    km, kwh = sum(t.km for t in known), sum(t.kwh for t in known)
     by_month: dict[str, list[float]] = defaultdict(lambda: [0.0, 0.0])
     for t in all_trips:
+        if t.kwh is None:
+            continue
         acc = by_month[_month(t.departed_at.replace(tzinfo=t.departed_at.tzinfo or UTC))]
         acc[0] += t.km
         acc[1] += t.kwh
