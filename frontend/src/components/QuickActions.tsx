@@ -22,7 +22,7 @@ export function QuickActions({ car, run, pending }: Props) {
       return (
         <span key={key} className="inline-flex items-center gap-2 rounded-[9px] bg-warn-soft px-3 py-[6px] text-xs font-semibold text-warn-ink">
           {opts?.confirm}
-          <button className="btn btn-primary !px-3 !py-1" onClick={() => { setConfirming(null); void run(key, path, body) }}>
+          <button className="btn btn-primary !px-3 !py-1" disabled={busy} onClick={() => { setConfirming(null); void run(key, path, body) }}>
             Sim
           </button>
           <button className="btn !px-3 !py-1" onClick={() => setConfirming(null)}>

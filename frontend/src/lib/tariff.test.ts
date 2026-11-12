@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Slot, Tariff } from '../api'
-import { azoresNow, daySegments, seasonAt } from './tariff'
+import { azoresNow, daySegments, daySegmentsFor, seasonAt } from './tariff'
 
 const day = (...s: [number, number, Slot['period']][]): Slot[] => s.map(([start, end, period]) => ({ start, end, period }))
 const sunday = day([0, 1440, 'vazio'])
@@ -49,5 +49,14 @@ describe('daySegments', () => {
 describe('azoresNow', () => {
   it('gives minutes since midnight in Azores time', () => {
     expect(azoresNow(new Date('2026-11-12T07:50:00Z')).minute).toBe(6 * 60 + 50)
+  })
+})
+
+describe('daySegmentsFor', () => {
+  it('resolves a plain calendar date: Saturday 14/11/2026 in winter', () => {
+    expect(daySegmentsFor(EDA, { year: 2026, month: 11, day: 14 })).toEqual(EDA.seasons[0].days.saturday)
+  })
+  it('uses the month to pick the season', () => {
+    expect(daySegmentsFor(EDA, { year: 2026, month: 7, day: 8 })).toEqual(day([0, 1440, 'cheias']))
   })
 })

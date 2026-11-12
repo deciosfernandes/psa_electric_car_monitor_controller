@@ -19,3 +19,10 @@ export const fmtDate = (d: Date | string): string => dateFmt.format(new Date(d))
 export const fmtPct = (n: number): string => `${intFmt.format(n)} %`
 export const fmtKm = (n: number): string => `${intFmt.format(n)} km`
 export const fmtEur = (n: number): string => plain(eurFmt.format(n))
+
+/** Minutes since midnight as prose (06h50, 18h). */
+export const fmtMinutes = (m: number): string =>
+  `${String(Math.floor(m / 60)).padStart(2, '0')}h${m % 60 ? String(m % 60).padStart(2, '0') : ''}`
+
+/** Minutes since midnight as an input value (06:50, 24:00). */
+export const fmtClock = (m: number): string => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`

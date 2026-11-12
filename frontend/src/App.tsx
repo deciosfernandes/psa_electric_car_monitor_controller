@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter, Route, Routes } from 'react-router'
 import { Shell } from './layout/Shell'
 import ComingSoon from './pages/ComingSoon'
+import Automacao from './pages/Automacao'
 import Login from './pages/Login'
 import Painel from './pages/Painel'
 
@@ -17,7 +18,7 @@ export default function App() {
           <Route path="/login" element={<Login />} />
           <Route element={<Shell />}>
             <Route index element={<Painel />} />
-            <Route path="automacao" element={<ComingSoon title="Automação" message={WIP} />} />
+            <Route path="automacao" element={<Automacao />} />
             <Route path="cargas" element={<ComingSoon title="Cargas" />} />
             <Route path="viagens" element={<ComingSoon title="Viagens" />} />
             <Route path="consumo" element={<ComingSoon title="Consumo" />} />
