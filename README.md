@@ -52,7 +52,7 @@ Backend (Python 3.12):
 ```bash
 cd backend
 python -m venv .venv
-.venv/Scripts/pip install -e .[dev]      # Linux/macOS: .venv/bin/pip
+.venv/Scripts/pip install -e '.[dev]'      # Linux/macOS: .venv/bin/pip
 .venv/Scripts/python -m pytest -q
 .venv/Scripts/python -m ruff check psacc --exclude psacc/psa/connected_car_api
 PSACC_FAKE=1 .venv/Scripts/python -m uvicorn psacc.main:app --port 8000
@@ -78,7 +78,8 @@ do carregamento e o significado de `charging.nextDelayedTime`:
 
 ```bash
 cd backend
-python scripts/spike_deferred.py
+# Windows: .venv/Scripts/python | Linux/macOS: .venv/bin/python
+.venv/Scripts/python scripts/spike_deferred.py
 ```
 
 Escreve `spike-report.json` (sem tokens, VIN nem posição) na pasta de dados.

@@ -19,7 +19,7 @@ Backend (from `backend/`, venv at `backend/.venv`; Windows paths shown, use `.ve
 .venv/Scripts/python -m pytest tests/test_decide.py::test_name -q     # single test
 .venv/Scripts/python -m ruff check psacc --exclude psacc/psa/connected_car_api
 PSACC_FAKE=1 .venv/Scripts/python -m uvicorn psacc.main:app --port 8000   # demo mode, fake in-memory car
-python scripts/spike_deferred.py     # one-off real-car spike (car plugged in)
+.venv/Scripts/python scripts/spike_deferred.py     # one-off real-car spike (car plugged in)
 ```
 
 Frontend (from `frontend/`):
