@@ -93,3 +93,12 @@ def test_psa_overwrite_leaves_no_tmp(tmp_path):
     store.save_psa({"a": 2})
     assert store.get_psa() == {"a": 2}
     assert [p.name for p in tmp_path.iterdir() if p.name.startswith("psa")] == ["psa.json"]
+
+
+def test_tariff_defaults_to_preset_and_roundtrips():
+    from psacc.tariff.presets import EDA_TRI_SEMANAL
+
+    assert store.get_tariff() == EDA_TRI_SEMANAL
+    custom = EDA_TRI_SEMANAL.model_copy(update={"name": "Outro"})
+    store.save_tariff(custom)
+    assert store.get_tariff() == custom

@@ -11,6 +11,8 @@ from sqlmodel import Field as SQLField
 from sqlmodel import Session, SQLModel, create_engine, select
 
 from . import settings
+from .tariff.model import Tariff
+from .tariff.presets import EDA_TRI_SEMANAL
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +45,8 @@ class LastCommand(BaseModel):
     at: datetime
     verified: bool
     attempts: int
+    reason: str = ""
+    alerted: bool = False  # failure alert already sent in this episode (reset on the next verified success)
 
 
 class BatterySample(BaseModel):
@@ -184,6 +188,14 @@ def get_last_command() -> LastCommand | None:
 
 def set_last_command(c: LastCommand | None) -> None:
     _set_state("last_command", c)
+
+
+def get_tariff() -> Tariff:
+    return _get_state("tariff", Tariff) or EDA_TRI_SEMANAL
+
+
+def save_tariff(t: Tariff) -> None:
+    _set_state("tariff", t)
 
 
 def add_battery_sample(at: datetime, soc: float, charging: bool) -> None:
