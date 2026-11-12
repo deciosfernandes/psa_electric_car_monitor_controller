@@ -269,6 +269,21 @@ def test_no_wakeup_when_unplugged():
     assert gateway.refreshes == [True, False, False, False, False]
 
 
+
+def test_stale_unplugged_is_unknown_hourly_wakeup():
+    """R3: an "unplugged" snapshot older than 60 min no longer blocks the hourly staleness wakeup."""
+    clock = Clock(THU_1200)
+    poller, gateway, *_ = make(clock)
+    at_clock(gateway, clock, plugged=False, charging=False, charge_status="Disconnected")
+    poller.run_once()  # 12h00: startup wake; the car reports unplugged at 12h00
+    for _ in range(11):  # 12h05 .. 12h55: fresh unplugged -> no wakeup
+        clock.advance(minutes=5)
+        poller.run_once()
+    assert gateway.refreshes == [True, False] + [False] * 11
+    clock.advance(minutes=5)  # 13h00: "unplugged" is 60 min old -> unknown -> hourly wakeup
+    poller.run_once()
+    assert gateway.refreshes[-2:] == [True, False]
+
 def test_no_wakeup_when_idle_and_fresh_then_hourly():
     clock = Clock(THU_1200)
     poller, gateway, *_ = make(clock)

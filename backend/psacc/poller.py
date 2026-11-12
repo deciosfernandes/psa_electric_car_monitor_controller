@@ -154,8 +154,8 @@ class Poller:
 
     def _wake_wanted(self, now: datetime, urgent: bool) -> bool:
         latest = self._latest
-        if latest is not None and latest.plugged is False:
-            return False  # unplugged: the car cannot charge, nothing to enforce
+        if latest is not None and latest.plugged is False and now - latest.at < STALE_AFTER:
+            return False  # unplugged: the car cannot charge, nothing to enforce (older than that: unknown)
         if urgent or self.engine.verification_pending():
             return True
         if any(ev.at <= now < ev.at + WAKE_AFTER_EVENT for ev in self._events(now)):
