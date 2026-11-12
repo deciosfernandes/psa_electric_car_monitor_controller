@@ -75,9 +75,21 @@ def test_locate_recent_fix_moved_odometer_still_trusted():
     assert locate(NOW, car(mileage_km=1012.0), fix, [HOME]) == ("home", HOME)
 
 
-def test_locate_old_fix_unknown_odometer_keeps_position():
+def test_locate_old_fix_unknown_car_odometer_is_unknown():
     fix = PositionFix(lat=10.0, lon=20.0, at=NOW - timedelta(hours=5), mileage_km=1000.0)
-    assert locate(NOW, dataclasses.replace(car(), mileage_km=None), fix, [HOME]) == ("home", HOME)
+    assert locate(NOW, dataclasses.replace(car(), mileage_km=None), fix, [HOME]) == ("unknown", None)
+
+
+def test_locate_old_fix_unknown_fix_odometer_is_unknown():
+    fix = PositionFix(lat=10.0, lon=20.0, at=NOW - timedelta(hours=5), mileage_km=None)
+    assert locate(NOW, car(mileage_km=1000.0), fix, [HOME]) == ("unknown", None)
+
+
+def test_locate_naive_fix_time_is_utc():
+    naive = (NOW - timedelta(hours=5)).replace(tzinfo=None)
+    fix = PositionFix(lat=10.0, lon=20.0, at=naive, mileage_km=1000.0)
+    assert locate(NOW, car(), fix, [HOME]) == ("home", HOME)
+    assert locate(NOW, car(mileage_km=1012.0), fix, [HOME]) == ("unknown", None)
 
 
 def test_place_validation():

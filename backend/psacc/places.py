@@ -4,7 +4,7 @@ Pure helpers: the position fix and the places are passed in, nothing here touche
 """
 
 import math
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
@@ -69,12 +69,10 @@ def locate(now: datetime, car: CarSnapshot, fix: PositionFix | None, places: lis
         return "unset", None
     if fix is None:
         return "unknown", None
-    if (
-        now - fix.at > STALE_FIX
-        and car.mileage_km is not None
-        and fix.mileage_km is not None
-        and abs(car.mileage_km - fix.mileage_km) > MOVED_KM
+    fix_at = fix.at if fix.at.tzinfo else fix.at.replace(tzinfo=timezone.utc)  # naive values are UTC
+    if now - fix_at > STALE_FIX and (
+        car.mileage_km is None or fix.mileage_km is None or abs(car.mileage_km - fix.mileage_km) > MOVED_KM
     ):
-        return "unknown", None
+        return "unknown", None  # an old fix only holds while both odometers prove the car has not moved
     place = place_at(fix.lat, fix.lon, places)
     return (place.kind, place) if place else ("other", None)
