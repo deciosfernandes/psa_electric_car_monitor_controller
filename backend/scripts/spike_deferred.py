@@ -6,7 +6,6 @@ Car must be plugged in and charging. Writes DATA_DIR/spike-report.json (tokens, 
 Share that file with the developer afterwards.
 """
 import json
-import re
 import sys
 import time
 from datetime import datetime
@@ -19,38 +18,11 @@ from psacc import settings, setup_flow, store  # noqa: E402
 from psacc.gateway import PsaGateway  # noqa: E402
 from psacc.psa.RemoteClient import MQTT_EVENT_TOPIC  # noqa: E402
 from psacc.psa.constants import BRAND  # noqa: E402
+from psacc.spike_report import find_keys, sanitize  # noqa: E402
 
 WAIT_S = 90
 PROGRAM_HOUR = (0, 10)
-SENSITIVE_KEY = re.compile(r"token|secret|password|customer", re.I)
 last_mqtt: dict = {"event": None, "precond_state": None, "charging_state": None}
-
-
-def sanitize(obj, secrets: dict[str, str]):
-    """Replace known ids by placeholders and redact sensitive keys, recursively."""
-    if isinstance(obj, dict):
-        return {k: "REDACTED" if SENSITIVE_KEY.search(k) or k in ("geometry", "coordinates") else sanitize(v, secrets)
-                for k, v in obj.items()}
-    if isinstance(obj, list):
-        return [sanitize(v, secrets) for v in obj]
-    if isinstance(obj, str):
-        for value, placeholder in secrets.items():
-            if value:
-                obj = obj.replace(value, placeholder)
-    return obj
-
-
-def find_keys(obj, names: set[str], path: str = "") -> dict:
-    found = {}
-    if isinstance(obj, dict):
-        for k, v in obj.items():
-            if k in names:
-                found[f"{path}/{k}"] = v
-            found.update(find_keys(v, names, f"{path}/{k}"))
-    elif isinstance(obj, list):
-        for i, v in enumerate(obj):
-            found.update(find_keys(v, names, f"{path}[{i}]"))
-    return found
 
 
 def capture_mqtt(remote) -> None:
