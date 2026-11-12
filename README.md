@@ -1,46 +1,46 @@
 # PSA Electric Car Monitor & Controller
 
-Aplicação web pessoal para acompanhar e controlar um carro elétrico do grupo PSA/Stellantis (testada com um
-Peugeot e-208) e **carregar automaticamente apenas nas horas de vazio** da tarifa da EDA — Electricidade dos
-Açores (tri-horária, ciclo semanal).
+Personal web app to monitor and control a PSA/Stellantis electric car (tested with a Peugeot e-208) and
+**charge automatically only during off-peak ("vazio") hours** of the EDA — Electricidade dos Açores tariff
+(tri-hourly, weekly cycle).
 
-> Baseado no projeto [**psa_car_controller**](https://github.com/flobz/psa_car_controller) de
-> [**flobz**](https://github.com/flobz), autor original. Toda a integração com a PSA (login OAuth, código OTP,
-> comandos remotos por MQTT) parte do trabalho de engenharia inversa desse projeto. Esta versão é uma reescrita
-> para uso pessoal, com nova interface, nova arquitetura e automação por tarifa. Obrigado ao autor e a todos os
-> contribuidores do projeto original.
+> Based on [**psa_car_controller**](https://github.com/flobz/psa_car_controller) by
+> [**flobz**](https://github.com/flobz), the original author. All of the PSA integration (OAuth login, OTP code,
+> remote commands over MQTT) builds on that project's reverse-engineering work. This version is a rewrite for
+> personal use, with a new interface, a new architecture and tariff-driven automation. Many thanks to the
+> author and all contributors of the original project.
 
-## O que faz
+## Features
 
-- **Painel** — bateria, autonomia, estado de carga, faixa da tarifa de hoje (vazio / cheias / ponta) com o
-  próximo evento automático, gráfico da bateria nas últimas 24 h e registo de atividade.
-- **Automação de carga** — usa o modo de carga diferida do carro:
-  - desliga o diferido no início do vazio (+ desfasamento, por omissão 10 min → `00h10`);
-  - liga o diferido antes do fim do vazio (− desfasamento → `06h50`);
-  - respeita um limite de bateria (por omissão 80 %);
-  - junta janelas de vazio seguidas (ex.: sábado 23h00 → segunda 07h00) sem comandos à meia-noite;
-  - confirma cada comando, volta a tentar e avisa se falhar.
-- **Tarifa editável** — predefinição "EDA tri-horário semanal" (verão junho–outubro, inverno novembro–maio),
-  grelha semanal em blocos de 15 min e preços por período com data de entrada em vigor.
-- **Controlo** — "Carregar agora" (substitui a automação até ao limite ou até desligar o cabo), climatização,
-  fechaduras, buzina, luzes e acordar o carro.
-- **Alertas no Discord** — falha de comando, sessão PSA expirada, ligação MQTT em baixo; opcionalmente início
-  e fim de carga.
-- **Interface em português**, tema claro e escuro, horas no formato 24 h, fuso `Atlantic/Azores`.
+- **Dashboard (Painel)** — battery, range, charging state, today's tariff strip (vazio / cheias / ponta) with
+  the next automatic event, last-24 h battery chart and activity log.
+- **Charging automation** — drives the car's deferred-charging mode:
+  - turns deferred charging off at the start of off-peak (+ offset, 10 min by default → `00:10`);
+  - turns it back on before off-peak ends (− offset → `06:50`);
+  - respects a battery limit (80 % by default);
+  - merges back-to-back off-peak windows (e.g. Saturday 23:00 → Monday 07:00) with no commands at midnight;
+  - verifies every command, retries, and alerts on failure.
+- **Editable tariff** — built-in "EDA tri-horário semanal" preset (summer June–October, winter November–May),
+  weekly grid in 15-minute blocks, and per-period prices with an effective-from date.
+- **Controls** — "Charge now" (overrides the automation until the limit is reached or the cable is unplugged),
+  climate control, locks, horn, lights and car wake-up.
+- **Discord alerts** — command failure, expired PSA session, MQTT connection down; optionally charge
+  start/stop.
+- **Portuguese (pt-PT) interface**, light and dark theme, 24-hour clock, `Atlantic/Azores` timezone.
 
-Cargas, Viagens e Consumo aparecem como "Em breve".
+Charges, Trips and Consumption are shown as "Em breve" (coming soon).
 
-## Avisos importantes
+## Important warnings
 
-- **Use apenas na rede local (LAN).** A aplicação controla um carro real (incluindo destrancar) e é protegida
-  só por uma palavra-passe. Não a exponha à Internet.
-- **Execute o script de diagnóstico antes de confiar na automação** (ver abaixo). Só assim se confirma que o
-  modo diferido interrompe a carga e em que fuso o carro lê a hora programada.
-- A API da PSA não é oficial para este uso e pode mudar sem aviso.
+- **Use on your local network (LAN) only.** The app controls a real car (including unlocking it) and is
+  protected by a single password. Do not expose it to the Internet.
+- **Run the diagnostic script before trusting the automation** (see below). It is the only way to confirm that
+  deferred mode stops an ongoing charge and which timezone the car uses for the programmed hour.
+- The PSA API is not officially intended for this use and may change without notice.
 
-## Instalação (Docker)
+## Installation (Docker)
 
-Requisitos: Docker com Docker Compose.
+Requirements: Docker with Docker Compose.
 
 ```bash
 git clone https://github.com/deciosfernandes/psa_electric_car_monitor_controller.git
@@ -48,43 +48,43 @@ cd psa_electric_car_monitor_controller
 docker compose up -d --build
 ```
 
-Abra `http://<servidor>:5000`.
+Open `http://<server>:5000`.
 
-### Primeira utilização
+### First run
 
-1. Defina a palavra-passe da aplicação (primeiro acesso).
-2. **Definições → Conta PSA**: escolha a aplicação (MyPeugeot, MyCitroën, …), o país e as credenciais da
-   conta. Se o login automático falhar, a aplicação mostra um link para concluir o login manualmente e colar
-   o código.
-3. Peça o código por SMS e introduza-o juntamente com o PIN da aplicação móvel.
-4. **Automação**: confirme o desfasamento (10 min), o limite de bateria (80 %), os horários da tarifa e
-   preencha os preços de vazio, cheias e ponta.
-5. **Definições → Discord** (opcional): cole o URL do webhook e use "Enviar teste".
-6. Execute o script de diagnóstico (abaixo).
+1. Set the app password (first visit).
+2. **Definições → Conta PSA** (Settings → PSA account): pick the app (MyPeugeot, MyCitroën, …), country and
+   account credentials. If the automatic login fails, the app shows a link to finish the login manually and
+   paste the code.
+3. Request the SMS code and enter it together with your mobile app PIN.
+4. **Automação** (Automation): check the offset (10 min), battery limit (80 %) and tariff hours, and fill in
+   the off-peak / mid-peak / peak prices.
+5. **Definições → Discord** (optional): paste the webhook URL and use "Enviar teste" (send test).
+6. Run the diagnostic script (below).
 
-### Dados e cópias de segurança
+### Data and backups
 
-Tudo fica em `./data` (montado em `/data` no contentor): base de dados, configuração, tokens da PSA, código
-OTP e certificados. A pasta é criada e ajustada automaticamente com permissões só para a aplicação, que corre
-sem privilégios de administrador. Faça cópias de segurança desta pasta e não a partilhe.
+Everything lives in `./data` (mounted at `/data` in the container): database, configuration, PSA tokens, OTP
+secret and certificates. The folder is created and restricted automatically so only the app can read it; the
+app runs as a non-root user. Back up this folder and never share it.
 
-### Atualizar
+### Updating
 
 ```bash
 git pull
 docker compose up -d --build
 ```
 
-Os dados em `./data` mantêm-se.
+Data in `./data` is kept.
 
-## Script de diagnóstico
+## Diagnostic script
 
-Obrigatório **uma vez**, com o carro ligado à tomada e a bateria abaixo do limite, de preferência no horário
-de inverno (quando os Açores estão em UTC−1, o teste do fuso é conclusivo). Demora 20–60 min, porque a PSA
-limita os pedidos para acordar o carro.
+Required **once**, with the car plugged in and the battery below the limit, ideally during winter time (when
+the Azores are at UTC−1 the timezone test is conclusive). It takes 20–60 minutes because PSA rate-limits car
+wake-up requests.
 
-**Pare a aplicação antes** (`docker compose down`): o script e a aplicação não podem usar as mesmas
-credenciais da PSA ao mesmo tempo.
+**Stop the app first** (`docker compose down`): the script and the app must not use the same PSA credentials
+at the same time.
 
 ```bash
 cd backend
@@ -93,20 +93,21 @@ python -m venv .venv
 .venv/Scripts/python scripts/spike_deferred.py # Linux/macOS: .venv/bin/python
 ```
 
-Para usar as mesmas credenciais do Docker, defina antes `PSACC_DATA_DIR` para a pasta `data` do repositório
+To share credentials with the Docker app, first point `PSACC_DATA_DIR` at the repository's `data` folder
 (PowerShell: `$env:PSACC_DATA_DIR = "..\data"`).
 
-O resultado fica em `spike-report.json` na pasta de dados, sem tokens, VIN nem localização. Veredicto do fuso:
+The result is written to `spike-report.json` in the data folder, without tokens, VIN or location. Timezone
+verdict:
 
-| Resultado | Significado |
+| Result | Meaning |
 |---|---|
-| `local` | O carro lê a hora em hora dos Açores — a automação pode ser usada. |
-| `utc` | O carro lê a hora em UTC — não use a automação até isto ser corrigido. |
-| `inconclusive` | O teste não foi conclusivo (ver `reason`) — volte a correr o script. |
+| `local` | The car reads the hour in Azores local time — the automation can be used. |
+| `utc` | The car reads the hour in UTC — do not use the automation until this is fixed. |
+| `inconclusive` | The test was not conclusive (see `reason`) — run the script again. |
 
-Mais detalhes em [`backend/psacc/psa/NOTES.md`](backend/psacc/psa/NOTES.md).
+More details in [`backend/psacc/psa/NOTES.md`](backend/psacc/psa/NOTES.md).
 
-## Desenvolvimento
+## Development
 
 Backend (Python 3.12, FastAPI):
 
@@ -119,27 +120,27 @@ python -m venv .venv
 PSACC_FAKE=1 .venv/Scripts/python -m uvicorn psacc.main:app --port 8000
 ```
 
-`PSACC_FAKE=1` usa um carro simulado em memória (modo de demonstração, com aviso visível na interface). Nunca
-em produção.
+`PSACC_FAKE=1` uses an in-memory simulated car (demo mode, with a visible banner in the UI). Never use it in
+production.
 
 Frontend (Node 22, Vite + React + TypeScript + Tailwind):
 
 ```bash
 cd frontend
 npm ci
-npm run dev     # http://localhost:5173, /api encaminhado para http://127.0.0.1:8000
+npm run dev     # http://localhost:5173, /api proxied to http://127.0.0.1:8000
 npm test
 npm run lint
 npm run build
 ```
 
-A arquitetura e os comandos para quem desenvolve estão em [`CLAUDE.md`](CLAUDE.md); o desenho completo em
+Architecture and developer commands are in [`CLAUDE.md`](CLAUDE.md); the full design is in
 [`docs/superpowers/specs/`](docs/superpowers/specs/).
 
-## Créditos e licença
+## Credits and license
 
-- Projeto original: [flobz/psa_car_controller](https://github.com/flobz/psa_car_controller), por
-  [flobz](https://github.com/flobz) e contribuidores.
-- Horários da tarifa: folheto "Ciclo Semanal" da [EDA — Electricidade dos Açores](https://www.eda.pt).
+- Original project: [flobz/psa_car_controller](https://github.com/flobz/psa_car_controller), by
+  [flobz](https://github.com/flobz) and contributors.
+- Tariff hours: "Ciclo Semanal" leaflet from [EDA — Electricidade dos Açores](https://www.eda.pt).
 
-Distribuído sob a licença **GPL-3.0**, tal como o projeto original — ver [`LICENSE`](LICENSE).
+Licensed under **GPL-3.0**, like the original project — see [`LICENSE`](LICENSE).
