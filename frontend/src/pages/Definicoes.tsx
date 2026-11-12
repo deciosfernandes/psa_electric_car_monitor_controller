@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { apiGet, apiSend } from '../api'
+import { PlacesEditor } from '../components/PlacesEditor'
 import { SetupWizard } from '../components/SetupWizard'
 
 interface Settings {
@@ -235,6 +236,7 @@ export default function Definicoes() {
           <RefreshCard saved={settings.data} />
         </>
       )}
+      <PlacesEditor />
       <PasswordCard />
     </section>
   )

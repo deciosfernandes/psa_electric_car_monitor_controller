@@ -18,6 +18,8 @@ export interface CarSnapshot {
   longitude: number | null
   locked: boolean | null
   precond_on: boolean | null
+  mileage_km: number | null
+  battery_health: number | null // % reported by PSA
 }
 
 export interface ScheduleEvent {
@@ -40,8 +42,24 @@ export interface LastCommand {
   program_hour: [number, number] | null
 }
 
+export type Where = 'home' | 'work' | 'other' | 'unknown' | 'unset'
+
+export interface Place {
+  id: number | null
+  name: string
+  kind: 'home' | 'work' | 'other'
+  lat: number
+  lon: number
+  radius_m: number
+  price_eur_kwh: number | null
+}
+
 export interface Status {
   car: CarSnapshot | null // null while the PSA account is not configured or awaiting first poll
+  where: Where
+  place_name: string | null
+  mileage_km: number | null
+  position_age_min: number | null
   period: PeriodType
   next_event: ScheduleEvent | null
   automation: { enabled: boolean; offset_min: number; battery_limit: number }
