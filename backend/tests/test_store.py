@@ -142,3 +142,23 @@ def test_otp_saved_atomically_owner_only(tmp_path):
     assert [p.name for p in tmp_path.iterdir() if p.name.startswith("otp")] == ["otp.bin"]
     if os.name == "posix":
         assert _mode(tmp_path / "otp.bin") == 0o600
+
+
+def test_activity_source_defaults_to_automation():
+    store.log_activity("error", "motor", utc(1))
+    store.log_activity("error", "comando", utc(2), source="control")
+    acts = store.recent_activity()
+    assert [(a.message, a.source) for a in acts] == [("comando", "control"), ("motor", "automation")]
+
+
+def test_activity_source_column_added_to_existing_db(tmp_path):
+    import sqlite3
+
+    db = tmp_path / "old.db"
+    con = sqlite3.connect(db)
+    con.execute("CREATE TABLE activityrow (id INTEGER PRIMARY KEY, at DATETIME, kind VARCHAR, message VARCHAR)")
+    con.execute("INSERT INTO activityrow (at, kind, message) VALUES ('2026-11-12 01:00:00', 'info', 'antigo')")
+    con.commit()
+    con.close()
+    store.init_db(f"sqlite:///{db}")
+    assert [(a.message, a.source) for a in store.recent_activity()] == [("antigo", "automation")]

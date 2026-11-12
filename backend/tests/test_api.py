@@ -401,3 +401,11 @@ def test_put_tariff_without_vazio_is_422_pt(logged):
     r = logged.put("/api/tariff", json=body)
     assert r.status_code == 422
     assert r.json()["detail"] == "A tarifa tem de ter pelo menos um intervalo de vazio"
+
+
+def test_control_command_activity_is_tagged_control(logged):
+    gateway = logged.app.state.gateway
+    gateway.fail_next = 1
+    logged.post("/api/control/horn")
+    latest = logged.get("/api/activity").json()[0]
+    assert (latest["kind"], latest["source"]) == ("error", "control")

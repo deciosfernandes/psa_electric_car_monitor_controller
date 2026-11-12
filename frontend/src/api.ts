@@ -78,6 +78,7 @@ export interface Activity {
   at: string
   kind: 'info' | 'action' | 'error'
   message: string
+  source: 'automation' | 'control' // 'control': a command sent from the Controlo page
 }
 
 export interface BatterySample {

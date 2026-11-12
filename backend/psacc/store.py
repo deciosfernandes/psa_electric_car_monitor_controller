@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from typing import Literal
 
 from pydantic import BaseModel, Field
+from sqlalchemy import inspect, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Field as SQLField
@@ -31,10 +32,14 @@ class AppConfig(BaseModel):
     session_epoch: int = 0  # bumped on password change: sessions issued before it stop being valid
 
 
+ActivitySource = Literal["automation", "control"]
+
+
 class Activity(BaseModel):
     at: datetime
     kind: Literal["info", "action", "error"]
     message: str
+    source: ActivitySource = "automation"  # "control": a command sent from the Controlo page
 
 
 class Override(BaseModel):
@@ -68,6 +73,7 @@ class ActivityRow(SQLModel, table=True):
     at: datetime = SQLField(index=True)
     kind: str
     message: str
+    source: str = "automation"
 
 
 class StateRow(SQLModel, table=True):
@@ -100,8 +106,17 @@ def init_db(url: str | None = None) -> None:
         kwargs["poolclass"] = StaticPool
     _engine = create_engine(url, **kwargs)
     SQLModel.metadata.create_all(_engine)
+    _add_activity_source(_engine)
     _restrict_db_file(url)
     _ensure_config()
+
+
+def _add_activity_source(engine) -> None:
+    """Databases created before activity entries had a source get the column (existing rows: automation)."""
+    if "source" in {c["name"] for c in inspect(engine).get_columns("activityrow")}:
+        return
+    with engine.begin() as conn:
+        conn.execute(text("ALTER TABLE activityrow ADD COLUMN source VARCHAR NOT NULL DEFAULT 'automation'"))
 
 
 def _restrict_db_file(url: str) -> None:
@@ -173,17 +188,22 @@ def save_psa(d: dict) -> None:
     os.replace(tmp, path)
 
 
-def log_activity(kind: Literal["info", "action", "error"], message: str, at: datetime | None = None) -> None:
+def log_activity(
+    kind: Literal["info", "action", "error"],
+    message: str,
+    at: datetime | None = None,
+    source: ActivitySource = "automation",
+) -> None:
     at = at or datetime.now(timezone.utc)
     with _session() as s:
-        s.add(ActivityRow(at=_utc(at), kind=kind, message=message))
+        s.add(ActivityRow(at=_utc(at), kind=kind, message=message, source=source))
         s.commit()
 
 
 def recent_activity(limit: int = 50) -> list[Activity]:
     with _session() as s:
         rows = s.exec(select(ActivityRow).order_by(ActivityRow.at.desc(), ActivityRow.id.desc()).limit(limit)).all()
-        return [Activity(at=_utc(r.at), kind=r.kind, message=r.message) for r in rows]
+        return [Activity(at=_utc(r.at), kind=r.kind, message=r.message, source=r.source) for r in rows]
 
 
 def _get_state(key: str, model):

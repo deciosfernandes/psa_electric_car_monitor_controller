@@ -6,11 +6,15 @@ export interface PillState {
   tone: Tone
 }
 
-/** Pill for the car's state; `activity` is newest-first. An error stays "unresolved" until a later entry follows it. */
+/**
+ * Pill for the car's state; `activity` is newest-first. An automation error stays "unresolved" until a later
+ * automation entry follows it; Controlo commands (source 'control') neither raise nor clear it.
+ */
 export function pillState(status: Status, activity: Activity[] | undefined): PillState | null {
   const car = status.car
   if (!car) return null
-  if (activity?.[0]?.kind === 'error') return { label: 'Erro de automação', tone: 'error' }
+  const latestAutomation = activity?.find((a) => a.source !== 'control')
+  if (latestAutomation?.kind === 'error') return { label: 'Erro de automação', tone: 'error' }
   if (car.charging) return { label: `A carregar · ${status.period}`, tone: 'ok' }
   if (car.plugged) {
     return status.last_command?.mode === 'defer' && !status.override

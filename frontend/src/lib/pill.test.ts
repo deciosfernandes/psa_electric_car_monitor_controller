@@ -12,7 +12,9 @@ const status = (over: Partial<Status> = {}, c: Partial<CarSnapshot> = {}): Statu
   automation: { enabled: true, offset_min: 10, battery_limit: 80 },
   override: null, last_command: null, mqtt_connected: true, updated_at: '2026-11-12T00:00:00-01:00', ...over,
 })
-const act = (kind: Activity['kind']): Activity[] => [{ at: '2026-11-12T00:00:00-01:00', kind, message: 'x' }]
+const act = (kind: Activity['kind'], source: Activity['source'] = 'automation'): Activity[] => [
+  { at: '2026-11-12T00:00:00-01:00', kind, message: 'x', source },
+]
 const deferred = { mode: 'defer' as const, at: '', verified: true, attempts: 1, reason: '', alerted: false }
 
 describe('pillState', () => {
@@ -22,5 +24,9 @@ describe('pillState', () => {
   it('unplugged', () => expect(pillState(status({}, { plugged: false }), [])).toEqual({ label: 'Desligado da tomada', tone: 'neutral' }))
   it('latest activity is an error', () => expect(pillState(status({}, { charging: true }), act('error'))).toEqual({ label: 'Erro de automação', tone: 'error' }))
   it('error resolved by a later entry', () => expect(pillState(status(), [...act('action'), ...act('error')])?.tone).toBe('neutral'))
+  it('control command error is not an automation error', () =>
+    expect(pillState(status({}, { charging: true }), act('error', 'control'))?.label).toBe('A carregar · vazio'))
+  it('automation error stays when only control entries follow', () =>
+    expect(pillState(status(), [...act('action', 'control'), ...act('error')])?.label).toBe('Erro de automação'))
   it('no car', () => expect(pillState(status({ car: null }), [])).toBeNull())
 })

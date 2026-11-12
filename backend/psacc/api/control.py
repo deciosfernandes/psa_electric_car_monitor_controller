@@ -34,7 +34,7 @@ def _command(name: str, done: str, send: Callable[[], bool]) -> dict:
         logger.warning("%s command failed: %s", name, type(exc).__name__)
         ok = False
     message = done if ok else f"O comando falhou: {name}"
-    store.log_activity("action" if ok else "error", message)
+    store.log_activity("action" if ok else "error", message, source="control")
     return _result(ok, message)
 
 
