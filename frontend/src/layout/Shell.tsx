@@ -1,12 +1,13 @@
 import { useQuery } from '@tanstack/react-query'
-import { Link, Navigate, Outlet } from 'react-router'
+import { Link, Navigate, Outlet, useLocation } from 'react-router'
 import { apiGet, type AuthState } from '../api'
 import { useStatus } from '../useStatus'
 import { Sidebar } from './Sidebar'
 
 function NoCarNotice() {
   const { data } = useStatus()
-  if (!data || data.car) return null
+  const location = useLocation()
+  if (!data || data.psa_connected || data.car || location.pathname === '/definicoes') return null
   return (
     <div role="status" className="mb-4 rounded-[12px] bg-primary-soft px-4 py-3 text-primary-ink">
       A conta PSA ainda não está configurada.{' '}

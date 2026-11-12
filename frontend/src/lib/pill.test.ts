@@ -10,7 +10,7 @@ const car: CarSnapshot = {
 const status = (over: Partial<Status> = {}, c: Partial<CarSnapshot> = {}): Status => ({
   car: { ...car, ...c }, period: 'vazio', next_event: null,
   automation: { enabled: true, offset_min: 10, battery_limit: 80 },
-  override: null, last_command: null, mqtt_connected: true, updated_at: '2026-11-12T00:00:00-01:00', ...over,
+  override: null, last_command: null, mqtt_connected: true, psa_connected: true, updated_at: '2026-11-12T00:00:00-01:00', ...over,
 })
 const act = (kind: Activity['kind'], source: Activity['source'] = 'automation'): Activity[] => [
   { at: '2026-11-12T00:00:00-01:00', kind, message: 'x', source },

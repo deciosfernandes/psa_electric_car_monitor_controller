@@ -29,6 +29,7 @@ def status(request: Request) -> dict:
             "override": store.get_override(),
             "last_command": store.get_last_command(),
             "mqtt_connected": gateway is not None and gateway.mqtt_connected(),
+            "psa_connected": gateway is not None and gateway.auth_ok(),
             "updated_at": now,
         }
     )
