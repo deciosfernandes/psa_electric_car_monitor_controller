@@ -188,6 +188,7 @@ def test_status_shape(logged):
         "override",
         "last_command",
         "mqtt_connected",
+        "psa_connected",
         "updated_at",
     }
     assert body["period"] in ("vazio", "cheias", "ponta")

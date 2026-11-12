@@ -41,13 +41,14 @@ export interface LastCommand {
 }
 
 export interface Status {
-  car: CarSnapshot | null // null while the PSA account is not configured
+  car: CarSnapshot | null // null while the PSA account is not configured or awaiting first poll
   period: PeriodType
   next_event: ScheduleEvent | null
   automation: { enabled: boolean; offset_min: number; battery_limit: number }
   override: Override | null
   last_command: LastCommand | null
   mqtt_connected: boolean
+  psa_connected: boolean
   updated_at: string
 }
 
