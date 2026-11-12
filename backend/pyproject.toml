@@ -25,6 +25,7 @@ dependencies = [
     "urllib3<2",
     "six",
     "certifi",
+    "tzdata",
 ]
 
 [project.optional-dependencies]
