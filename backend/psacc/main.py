@@ -22,6 +22,7 @@ from .api import GatewayFactory, init_state, pt_detail, start_car, stop_car
 from .api import auth as auth_api
 from .api import automation as automation_api
 from .api import control as control_api
+from .api import history as history_api
 from .api import places as places_api
 from .api import setup as setup_api
 from .api import status as status_api
@@ -115,7 +116,7 @@ def create_app(db_url: str | None = None, gateway_factory: GatewayFactory | None
         return {"ok": True, "fake": os.environ.get("PSACC_FAKE") == "1"}
 
     app.include_router(auth_api.router)
-    for module in (status_api, automation_api, control_api, setup_api, places_api):
+    for module in (status_api, automation_api, control_api, setup_api, places_api, history_api):
         app.include_router(module.router, dependencies=[_login_required])
 
     static_dir = os.environ.get("PSACC_STATIC_DIR")

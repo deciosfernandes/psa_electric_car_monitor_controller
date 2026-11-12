@@ -10,6 +10,7 @@ from psacc import settings, store
 from psacc.auth import FAILURE_WINDOW_S, MAX_FAILURES, LoginRateLimiter
 from psacc.fake_gateway import FakeGateway, default_snapshot
 from psacc.main import CSRF_HEADER, create_app
+from psacc.places import Place
 from psacc.tariff.schedule import planned_events
 
 PASSWORD = "segredo123"
@@ -482,3 +483,94 @@ def test_battery_health_endpoint(logged):
         {"day": "2026-11-11", "value": 95.0},
         {"day": "2026-11-12", "value": 94.5},
     ]
+
+
+def _seed_history():
+    from psacc.history.charges import ChargeSession
+    from psacc.history.trips import Trip
+
+    utc = timezone.utc
+    store.save_place(Place(name="Casa", kind="home", lat=1, lon=1))
+    home = store.save_charge_session(
+        ChargeSession(
+            started_at=datetime(2026, 10, 3, 2, 0, tzinfo=utc),
+            ended_at=datetime(2026, 10, 3, 5, 0, tzinfo=utc),
+            place_kind="home", soc_start=20, soc_end=70)
+    )
+    store.add_charge_sample(home.id, datetime(2026, 10, 3, 3, 0, tzinfo=utc), 40, 20.0)
+    work = store.save_charge_session(
+        ChargeSession(
+            started_at=datetime(2026, 10, 4, 10, 0, tzinfo=utc),
+            ended_at=datetime(2026, 10, 4, 12, 0, tzinfo=utc),
+            place_kind="work", soc_start=10, soc_end=30)
+    )
+    # 2026-11-01 01:00 UTC is November 01 00:00 Azores
+    store.save_charge_session(
+        ChargeSession(
+            started_at=datetime(2026, 11, 1, 1, 0, tzinfo=utc),
+            ended_at=datetime(2026, 11, 1, 2, 0, tzinfo=utc),
+            place_kind="work", soc_start=10, soc_end=20)
+    )
+    now = datetime.now(utc)
+    for days, km, kwh in ((2, 100.0, 15.0), (40, 50.0, 10.0)):
+        store.save_trip(
+            Trip(departed_at=now - timedelta(days=days, hours=1), arrived_at=now - timedelta(days=days),
+                 from_kind="home", to_kind="work", km=km, kwh=kwh, kwh_100km=kwh / km * 100)
+        )
+    return home, work
+
+
+def test_history_requires_login(client):
+    for path in ("/api/charges", "/api/charges/summary", "/api/charges/1/samples", "/api/trips", "/api/consumption"):
+        assert client.get(path).status_code == 401, path
+    assert client.put("/api/charges/1/price", json={"eur_kwh": 0.1}).status_code == 401
+
+
+def test_charges_list_and_samples(logged):
+    home, _ = _seed_history()
+    rows = logged.get("/api/charges", params={"limit": 2}).json()
+    assert len(rows) == 2 and rows[0]["started_at"] > rows[1]["started_at"]
+    assert logged.get("/api/charges", params={"limit": 5, "offset": 2}).json()[0]["id"] == home.id
+    h = logged.get("/api/charges", params={"limit": 5, "offset": 2}).json()[0]
+    assert h["kwh"] == pytest.approx(23.0)
+    samples = logged.get(f"/api/charges/{home.id}/samples").json()
+    assert [s["soc"] for s in samples] == [40]
+    assert rows[1]["cost_eur"] == 0.0  # work charge is free
+    assert logged.get("/api/charges/999/samples").status_code == 404
+
+
+def test_charge_price_put(logged):
+    _, work = _seed_history()
+    r = logged.put(f"/api/charges/{work.id}/price", json={"eur_kwh": 0.2})
+    assert r.status_code == 200
+    assert r.json()["price_override_eur_kwh"] == 0.2
+    assert r.json()["cost_eur"] == pytest.approx(0.2 * 9.2)
+    assert logged.put("/api/charges/999/price", json={"eur_kwh": 0.2}).status_code == 404
+    assert logged.put(f"/api/charges/{work.id}/price", json={"eur_kwh": -1}).status_code == 422
+
+
+def test_charges_summary_month_uses_azores_time(logged):
+    _seed_history()
+    oct_ = logged.get("/api/charges/summary", params={"month": "2026-10"}).json()
+    assert set(oct_) == {"kwh", "cost_eur", "work_pct", "home_pct", "avg_home_eur_kwh"}
+    assert oct_["kwh"] == pytest.approx(23.0 + 9.2)
+    assert oct_["home_pct"] == pytest.approx(23.0 / 32.2 * 100)
+    assert oct_["work_pct"] == pytest.approx(9.2 / 32.2 * 100)
+    nov = logged.get("/api/charges/summary", params={"month": "2026-11"}).json()
+    assert nov["kwh"] == pytest.approx(4.6)  # 01:00 UTC 1 Nov = 00:00 Azores, November
+    assert logged.get("/api/charges/summary", params={"month": "bad"}).status_code == 422
+
+
+def test_trips_list(logged):
+    _seed_history()
+    rows = logged.get("/api/trips", params={"limit": 1}).json()
+    assert len(rows) == 1 and rows[0]["km"] == 100.0
+    assert logged.get("/api/trips", params={"limit": 5, "offset": 1}).json()[0]["km"] == 50.0
+
+
+def test_consumption(logged):
+    _seed_history()
+    d = logged.get("/api/consumption").json()
+    assert d["last30"] == {"km": 100.0, "kwh": 15.0, "kwh_100km": 15.0}
+    assert sum(m["km"] for m in d["months"]) == 150.0
+    assert all(set(m) == {"month", "km", "kwh", "kwh_100km"} for m in d["months"])
