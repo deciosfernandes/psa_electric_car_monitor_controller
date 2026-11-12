@@ -1,0 +1,115 @@
+import unittest
+from datetime import datetime, timezone
+
+from psacc.car import Car, Cars
+
+from paho.mqtt.client import MQTTMessage
+
+from psacc.psa.RemoteClient import MQTT_EVENT_TOPIC
+from tests.utils import get_rc
+
+message_without_precond = b'{"date":"2022-03-30T12:00:52Z","etat_res_elec":0,"precond_state":{},' \
+                          b'"charging_state":{"program":{' \
+                          b'"hour":22,"minute":30},"available":1,"remaining_time":0,"rate":0,"cable_detected":1,' \
+                          b'"soc_batt":76,' \
+                          b'"autonomy_zev":178,"type":0,"hmi_state":0,"mode":2},"stolen_state":0,"vin":"vin",' \
+                          b'"reason":0,"signal_quality":3,"sev_stop_date":"2022-03-30T11:10:25Z","fds":[],' \
+                          b'"sev_state":0,' \
+                          b'"obj_counter":1,"privacy_customer":0,"privacy_applicable":0,"privacy_applicable_max":2,' \
+                          b'"superlock_state":0} '
+message_without_charge_info = b'{"date":"2022-03-30T13:18:56Z","etat_res_elec":5,"precond_state":{"available":1,' \
+    b'"programs":{"program1":{"hour":34,"minute":7,"on":0,"day":[0,0,0,0,0,0,0]},' \
+    b'"program2":{"hour":34,"minute":7,"on":0,"day":[0,0,0,0,0,0,0]},"program3":{' \
+    b'"hour":34,"minute":7,"on":0,"day":[0,0,0,0,0,0,0]},"program4":{"hour":34,"minute":7,' \
+    b'"on":0,"day":[0,0,0,0,0,0,0]}},"asap":0,"status":0,"aff":1},"charging_state":{' \
+    b'"program":{"hour":22,"minute":30},"available":1,"rate":0,"cable_detected":1,' \
+    b'"soc_batt":61,"type":0,"aff":1,"hmi_state":0,"mode":2},"stolen_state":0,' \
+    b'"vin":"VIN","reason":4,"signal_quality":5,' \
+    b'"sev_stop_date":"2022-03-30T12:41:10Z","fds":["NDR01","NBM01","NCG01","NAO01",' \
+    b'"NAS01"],"sev_state":1,"obj_counter":2,"privacy_customer":0,"privacy_applicable":0,' \
+    b'"privacy_applicable_max":2,"superlock_state":0} '
+
+
+class TestUnit(unittest.TestCase):
+
+    def test_message_without_precond(self):
+        remote_client = get_rc()
+        msg = MQTTMessage(topic=MQTT_EVENT_TOPIC.encode("utf-8"))
+        msg.payload = message_without_precond
+        remote_client._on_mqtt_message(None, None, msg)
+        self.assertEqual(remote_client.precond_programs, {})
+
+    def test_message_without_charge_info(self):
+        remote_client = get_rc()
+        msg = MQTTMessage(topic=MQTT_EVENT_TOPIC.encode("utf-8"))
+        msg.payload = message_without_charge_info
+        remote_client._on_mqtt_message(None, None, msg)
+
+
+LOCK_EVENT = '{"date":"2026-08-30T22:35:44Z","precond_state":{},"charging_state":{"remaining_time":0,"rate":0},' \
+             '"vin":"VXKUKZKW0SW011711",' \
+             '"doors_state":{"doors_opening_state":[0,0,0,0,0,0,0],"doors_locking_state":%s}}'
+
+
+class TestMqttLockState(unittest.TestCase):
+    VIN = "VXKUKZKW0SW011711"
+
+    def setUp(self):
+        self.remote_client = get_rc()
+        self.remote_client.vehicles_list = Cars([Car(self.VIN, "vehicle_id", "Opel")])
+
+    def _send_event(self, locking_state):
+        msg = MQTTMessage(topic=(MQTT_EVENT_TOPIC + self.VIN).encode("utf-8"))
+        msg.payload = (LOCK_EVENT % locking_state).encode("utf-8")
+        self.remote_client._on_mqtt_message(None, None, msg)
+
+    def test_locked(self):
+        self._send_event(1)
+        self.assertEqual("Locked", self.remote_client.lock_state[self.VIN])
+        self.assertEqual(datetime(2026, 8, 30, 22, 35, 44, tzinfo=timezone.utc),
+                         self.remote_client.lock_state_at[self.VIN])
+
+    def test_unlocked(self):
+        self._send_event(3)
+        self.assertEqual("Unlocked", self.remote_client.lock_state[self.VIN])
+
+    def test_unknown_value_is_not_guessed(self):
+        self._send_event(2)
+        self.assertNotIn(self.VIN, self.remote_client.lock_state)
+        self.assertNotIn(self.VIN, self.remote_client.lock_state_at)
+
+    def test_null_doors_state(self):
+        # the key can be present and null, which must not raise out of the mqtt callback
+        msg = MQTTMessage(topic=(MQTT_EVENT_TOPIC + self.VIN).encode("utf-8"))
+        msg.payload = b'{"precond_state":{},"charging_state":{"remaining_time":0,"rate":0},' \
+                      b'"doors_state":null,"vin":"%s"}' % self.VIN.encode("utf-8")
+        self.remote_client._on_mqtt_message(None, None, msg)
+        self.assertEqual({}, self.remote_client.lock_state)
+
+    def test_event_without_doors_state(self):
+        msg = MQTTMessage(topic=(MQTT_EVENT_TOPIC + self.VIN).encode("utf-8"))
+        msg.payload = b'{"precond_state":{},"charging_state":{"remaining_time":0,"rate":0},"vin":"%s"}' \
+                      % self.VIN.encode("utf-8")
+        self.remote_client._on_mqtt_message(None, None, msg)
+        self.assertEqual({}, self.remote_client.lock_state)
+
+
+class TestMqttEventHook(unittest.TestCase):
+    def test_event_callbacks_receive_payload_and_errors_are_contained(self):
+        remote_client = get_rc()
+        received = []
+        remote_client.on_event.append(lambda data: 1 / 0)
+        remote_client.on_event.append(received.append)
+        msg = MQTTMessage(topic=(MQTT_EVENT_TOPIC + "vin").encode("utf-8"))
+        msg.payload = message_without_precond
+        remote_client._on_mqtt_message(None, None, msg)
+        self.assertEqual(76, received[0]["charging_state"]["soc_batt"])
+
+    def test_event_without_precond_state_still_dispatched(self):
+        remote_client = get_rc()
+        received = []
+        remote_client.on_event.append(received.append)
+        msg = MQTTMessage(topic=(MQTT_EVENT_TOPIC + "vin").encode("utf-8"))
+        msg.payload = b'{"vin":"vin","charging_state":{"soc_batt":50}}'
+        remote_client._on_mqtt_message(None, None, msg)
+        self.assertEqual("vin", received[0]["vin"])

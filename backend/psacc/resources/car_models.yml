@@ -1,0 +1,974 @@
+- !ElecModel
+  name: ë-Jumpy 46 kWh
+  battery_power: 46
+  fuel_capacity: 0
+  reg: VF7VTZKU8R
+  max_elec_consumption: 50
+- !ElecModel
+  name: E-5008 100 kWh GT LR
+  battery_power: 99
+  fuel_capacity: 0
+  reg: VR3KCZKM6R
+  max_elec_consumption: 99
+- !ElecModel
+  name: E-5008 73 kWh GT
+  battery_power: 73
+  fuel_capacity: 0
+  reg: VR3KCZKZ2R 
+  max_elec_consumption: 70
+- !ElecModel
+  name: E-5008 73 kWh GT
+  battery_power: 73
+  fuel_capacity: 0
+  reg: VR3KCZKZXS 
+  max_elec_consumption: 70
+- !ElecModel
+  name: e-5008
+  battery_power: 73
+  fuel_capacity: 0
+  reg: VR3KCZKZ8R 
+  max_elec_consumption: 70
+- !ElecModel
+  name: e-3008
+  battery_power: 73
+  fuel_capacity: 0
+  reg: VR3KCZKZ3R 
+  max_elec_consumption: 70
+- !ElecModel
+  name: e-3008
+  battery_power: 73
+  fuel_capacity: 0
+  reg: VR3KCZKZ7R 
+  max_elec_consumption: 70
+- !ElecModel
+  name: Vivaro-e panel van L3
+  battery_power: 68
+  fuel_capacity: 0
+  reg: VXEV1ZKXZM 
+  max_elec_consumption: 70
+- !ElecModel
+  name: Vivaro-e panel van L1
+  battery_power: 68
+  fuel_capacity: 0
+  reg: VXEV1ZKXZN 
+  max_elec_consumption: 70
+- !ElecModel
+  name: e-berlingo 2022+
+  battery_power: 46
+  fuel_capacity: 0
+  reg: VR7EZZKXZP 
+  max_elec_consumption: 70
+- !ElecModel
+  name: e-berlingo 2022+
+  battery_power: 46
+  fuel_capacity: 0
+  reg: VR7EZZKXZM 
+  max_elec_consumption: 70
+- !ElecModel
+  name: e-berlingo 2022+
+  battery_power: 46
+  fuel_capacity: 0
+  reg: VR7EZZKXZN 
+  max_elec_consumption: 70
+- !ElecModel
+  name: e-berlingo 2022+
+  battery_power: 50
+  fuel_capacity: 0
+  reg: VR7EMZKU5T
+  max_elec_consumption: 70
+- !ElecModel
+  name: e-jumpy
+  battery_power: 68
+  fuel_capacity: 0
+  reg:  VF7V1ZKXZM 
+  max_elec_consumption: 70
+- !ElecModel
+  name: Citroën ë-SpaceTourer 75 kWh
+  battery_power: 69
+  fuel_capacity: 0
+  reg: VF7VSZKU9S  
+  max_elec_consumption: 70
+- !ElecModel
+  name: e-208
+  battery_power: 46
+  fuel_capacity: 0
+  reg: VR3UHZK 
+  max_elec_consumption: 70
+- !ElecModel
+  name: e-2008
+  battery_power: 46
+  fuel_capacity: 0
+  reg: VR3UKZKX 
+  max_elec_consumption: 70
+  max_fuel_consumption: 0
+- !ElecModel
+  name: e2008 Facelift 2023+
+  battery_power: 50
+  fuel_capacity: 0
+  reg: VR3UKZKW 
+  max_elec_consumption: 70
+  max_fuel_consumption: 0
+- !ElecModel
+  name: e-Spacetourer
+  battery_power: 46
+  fuel_capacity: 0
+  reg: VF7VZZKX 
+  max_elec_consumption: 70
+  max_fuel_consumption: 0
+- !ElecModel
+  name: e-Traveller
+  battery_power: 46
+  fuel_capacity: 0
+  reg: VF3VZZKX 
+  max_elec_consumption: 70
+  max_fuel_consumption: 0
+- !ElecModel
+  name: corsa-e
+  battery_power: 46
+  fuel_capacity: 0
+  reg: VXKUHZKX 
+  max_elec_consumption: 70
+  max_fuel_consumption: 0
+- !ElecModel
+  name: DS3 Crossback e-tense
+  battery_power: 46
+  fuel_capacity: 0
+  reg: VR1UJZKX 
+  max_elec_consumption: 70
+  max_fuel_consumption: 0
+- !ElecModel
+  name: Mokka-e
+  battery_power: 46
+  fuel_capacity: 0
+  reg: VXKUKZKX 
+  max_elec_consumption: 70
+- !ElecModel
+  name: Zaphira-e
+  battery_power: 68
+  fuel_capacity: 0
+  reg: VXEVZZKX 
+  max_elec_consumption: 70
+  max_fuel_consumption: 0
+- !ElecModel
+  name: E-C4
+  battery_power: 46
+  fuel_capacity: 0
+  reg: VR7BCZKX 
+  max_elec_consumption: 70
+  max_fuel_consumption: 0
+- !ElecModel
+  name: E-C4X
+  battery_power: 54
+  fuel_capacity: 0
+  reg: VR7BFZKW1R 
+  max_elec_consumption: 70
+  max_fuel_consumption: 0
+- !ElecModel
+  name: e-Rifter
+  battery_power: 45
+  fuel_capacity: 0
+  reg: VR3EZZKXZ 
+  max_elec_consumption: 70
+- !ElecModel
+  name: ION
+  battery_power: 14.5
+  fuel_capacity: 0
+  reg: VF31NZKY 
+  max_elec_consumption: 70
+- !CarModel
+  name: 5008 Plug-in Hybrid 195
+  battery_power: 17.8
+  fuel_capacity: 60
+  reg: VR3KBDGK7S
+  max_elec_consumption: 70
+  max_fuel_consumption: 30
+- !CarModel
+  name: SUV 3008 Hybrid 225
+  battery_power: 13.2
+  fuel_capacity: 43
+  reg: VF3M4DGZ 
+  max_elec_consumption: 70
+  max_fuel_consumption: 30
+- !CarModel
+  name: SUV 3008
+  battery_power: 0
+  fuel_capacity: 53
+  reg: VF3MJEHZ 
+  max_elec_consumption: 70
+  max_fuel_consumption: 30
+- !CarModel
+  name: '308'
+  battery_power: 0
+  fuel_capacity: 56
+  reg: VF3L35GG 
+  max_elec_consumption: 70
+  max_fuel_consumption: 30
+- !CarModel
+  name: '308SW 2018'
+  battery_power: 0
+  fuel_capacity: 46
+  reg: VF3LCBHZHJ 
+  max_elec_consumption: 70
+  max_fuel_consumption: 30
+- !CarModel
+  name: '308SW GT-Line'
+  battery_power: 0
+  fuel_capacity: 52
+  reg: VF3LRHNSPJ 
+  max_elec_consumption: 70
+  max_fuel_consumption: 30
+- !CarModel
+  name: '208'
+  battery_power: 0
+  fuel_capacity: 44
+  reg: VR3UPHN 
+  max_elec_consumption: 70
+  max_fuel_consumption: 30
+- !CarModel
+  name: '208'
+  battery_power: 0
+  fuel_capacity: 44
+  reg: VF3CCBHY6H 
+  max_elec_consumption: 70
+  max_fuel_consumption: 30
+- !CarModel
+  name: '2008'
+  battery_power: 0
+  fuel_capacity: 44
+  reg: VR3USHNS 
+  max_elec_consumption: 70
+  max_fuel_consumption: 30
+- !CarModel
+  name: '2008'
+  battery_power: 0
+  fuel_capacity: 44
+  reg: VF3CU9HP 
+  max_elec_consumption: 70
+  max_fuel_consumption: 30
+- !CarModel
+  name: '2008 MK1'
+  battery_power: 0
+  fuel_capacity: 44
+  reg: VF3CUBHY6F 
+  max_elec_consumption: 70
+  max_fuel_consumption: 30
+- !CarModel
+  name: 2008 II
+  battery_power: 0
+  fuel_capacity: 45
+  reg: VR3USHNK 
+  max_elec_consumption: 70
+  max_fuel_consumption: 30
+- !CarModel
+  name: SUV 5008 II
+  battery_power: 0
+  fuel_capacity: 56
+  reg: VF3MRHNS 
+  max_elec_consumption: 70
+  max_fuel_consumption: 30
+- !CarModel
+  name: SUV 5008 II 2018
+  battery_power: 0
+  fuel_capacity: 56
+  reg: VF3MRHNYHH 
+  max_elec_consumption: 70
+  max_fuel_consumption: 30
+- !CarModel
+  name: SUV 3008 II
+  battery_power: 0
+  fuel_capacity: 53
+  reg: VF3MRHNYHJ 
+  max_elec_consumption: 70
+  max_fuel_consumption: 30
+- !CarModel
+  name: N5008 GT-LINE 1.6L
+  battery_power: 0
+  fuel_capacity: 60
+  reg: VF3MCBHZ 
+  max_elec_consumption: 70
+  max_fuel_consumption: 30
+- !CarModel
+  name: C5 Aircross Hybrid
+  battery_power: 13.2
+  fuel_capacity: 43
+  reg: VR7A4DGZ 
+  max_elec_consumption: 70
+  max_fuel_consumption: 30
+- !CarModel
+  name: DS7 Crossback E-Tense 300 4x4
+  battery_power: 11.5
+  fuel_capacity: 43
+  reg: VR1J45GB 
+  max_elec_consumption: 70
+  max_fuel_consumption: 30
+- !CarModel
+  name: 508 SW Hybrid
+  battery_power: 11.5
+  fuel_capacity: 45
+  reg: VR3F4DGZ 
+  max_elec_consumption: 70
+  max_fuel_consumption: 30
+- !CarModel
+  name: 508 SW II Hybrid 180CV
+  battery_power: 12.4
+  fuel_capacity: 43
+  reg: VR3F4DGL1R 
+  max_elec_consumption: 70
+  max_fuel_consumption: 30
+- !CarModel
+  name: 508 Hybrid
+  battery_power: 11.5
+  fuel_capacity: 43
+  reg: VR3F3DGZ 
+  max_elec_consumption: 70
+  max_fuel_consumption: 30
+- !CarModel
+  name: 508 SW 2.0 HDI 163CV
+  battery_power: 0
+  fuel_capacity: 72
+  reg: VF38ERHH 
+  max_elec_consumption: 70
+  max_fuel_consumption: 30
+- !CarModel
+  name: 508 SW II
+  battery_power: 0
+  fuel_capacity: 62
+  reg: VR3F45GG 
+  max_elec_consumption: 70
+  max_fuel_consumption: 30
+- !CarModel
+  name: 508 BlueHDI 130
+  battery_power: 0
+  fuel_capacity: 55
+  reg: VR3FBYHZ 
+  max_elec_consumption: 0
+  max_fuel_consumption: 30
+- !CarModel
+  name: Grandland X Hybrid
+  battery_power: 13.2
+  fuel_capacity: 43
+  reg: W0VZ4DGZ 
+  max_elec_consumption: 70
+  max_fuel_consumption: 30
+- !CarModel
+  name: Grandland X Hybrid 4x4
+  battery_power: 13.2
+  fuel_capacity: 43
+  reg: W0VZ45GB 
+  max_elec_consumption: 70
+  max_fuel_consumption: 30
+- !CarModel
+  name: Grandland Electric
+  battery_power: 73
+  fuel_capacity: 0
+  reg: VXKKCZKZ3T
+  max_elec_consumption: 70
+  max_fuel_consumption: 0
+- !CarModel
+  name: C3 Aircross
+  battery_power: 0
+  fuel_capacity: 45
+  reg: VF72RHNPXK 
+  max_elec_consumption: 70
+  max_fuel_consumption: 30
+- !CarModel
+  name: "C3 Aircross 2022+"
+  battery_power: 0
+  fuel_capacity: 45
+  reg: VF72RHNS1N 
+  max_elec_consumption: 70
+  max_fuel_consumption: 30
+- !CarModel
+  name: 308 Hybrid
+  battery_power: 12.4
+  fuel_capacity: 40
+  reg: VR3F3DGYT 
+  max_elec_consumption: 70
+  max_fuel_consumption: 30
+- !CarModel
+  name: 308 Hybrid
+  battery_power: 12.4
+  fuel_capacity: 40
+  reg: VR3F3DGXTP 
+  max_elec_consumption: 70
+  max_fuel_consumption: 30  
+- !CarModel
+  name: 308 Hybrid
+  battery_power: 12.4
+  fuel_capacity: 40
+  reg: VR3F3DGXTN 
+  max_elec_consumption: 70
+  max_fuel_consumption: 30
+- !CarModel
+  name: 308 SW Hybrid
+  battery_power: 12.4
+  fuel_capacity: 40
+  reg: VR3F4DGYTN 
+  max_elec_consumption: 70
+  max_fuel_consumption: 30
+- !CarModel
+  name: DS7 Crossback E-Tense 225
+  battery_power: 13.2
+  fuel_capacity: 43
+  reg: VR1J4DGZ 
+  max_elec_consumption: 70
+  max_fuel_consumption: 30
+- !CarModel
+  name: C4 Grand Picasso
+  battery_power: 0
+  fuel_capacity: 57
+  reg: VF73ABHZMJ 
+  max_elec_consumption: 70
+  max_fuel_consumption: 30
+- !CarModel
+  name: C4 2021
+  battery_power: 0
+  fuel_capacity: 50
+  reg: VR7BAHNSAM 
+  max_elec_consumption: 0
+  max_fuel_consumption: 30
+- !ElecModel
+  name: Combo-e Cargo
+  battery_power: 50
+  fuel_capacity: 0
+  reg: W0VEAZKXZM 
+  max_elec_consumption: 45
+- !CarModel
+  name: Astra L Hybrid
+  battery_power: 11.3
+  fuel_capacity: 42
+  reg: VXKF3DGXTN 
+  max_elec_consumption: 70
+  max_fuel_consumption: 30
+- !CarModel
+  name: Astra L GSe Hybrid
+  battery_power: 12.4
+  fuel_capacity: 42
+  reg: VXKF3DGYTP 
+  max_elec_consumption: 70
+  max_fuel_consumption: 30
+- !CarModel
+  name: Astra L Sports Tourer GSe Hybrid
+  battery_power: 12.4
+  fuel_capacity: 42
+  reg: VXKF4DGYTN 
+  max_elec_consumption: 70
+  max_fuel_consumption: 30
+- !ElecModel
+  name: Astra L Electric Sports Tourer GS
+  battery_power: 51
+  fuel_capacity: 0
+  reg: VXKFNZKWZP 
+  max_elec_consumption: 70
+- !ElecModel
+  name: Astra L Electric GS
+  battery_power: 51
+  fuel_capacity: 0
+  reg: VXKFMZKWZP 
+  max_elec_consumption: 70
+- !CarModel
+  name: Astra L Hybrid
+  battery_power: 12.4
+  fuel_capacity: 42
+  reg: VXKF3DGXTP 
+  max_elec_consumption: 70
+  max_fuel_consumption: 30
+- !CarModel
+  name: Astra L ST Hybrid
+  battery_power: 12.4
+  fuel_capacity: 42
+  reg: VXKF4DGXTP 
+  max_elec_consumption: 70
+  max_fuel_consumption: 30
+- !CarModel
+  name: 308 SW Hybrid
+  battery_power: 12.4
+  fuel_capacity: 40
+  reg: VR3F4DGXTN 
+  max_elec_consumption: 70
+  max_fuel_consumption: 30
+- !CarModel
+  name: DS4 E-Tense
+  battery_power: 12.4
+  fuel_capacity: 40
+  reg: VR1F4DGYT 
+  max_elec_consumption: 70
+  max_fuel_consumption: 30
+- !CarModel
+  name: New 308
+  battery_power: 0
+  fuel_capacity: 56
+  reg: VR3FPHNSTN 
+  max_elec_consumption: 70
+  max_fuel_consumption: 30   
+- !CarModel
+  name: New 308
+  battery_power: 0
+  fuel_capacity: 56
+  reg: VR3FPHNSLM 
+  max_elec_consumption: 70
+  max_fuel_consumption: 30   
+- !CarModel
+  name: New 308
+  battery_power: 0
+  fuel_capacity: 52
+  reg: VR3FPHNSLN 
+  max_elec_consumption: 70
+  max_fuel_consumption: 30
+- !CarModel
+  name: C5X
+  battery_power: 12.4
+  fuel_capacity: 40
+  reg: VR7NDDGYPN 
+  max_elec_consumption: 70
+  max_fuel_consumption: 30
+- !CarModel
+  name: SUV 3008 Hybrid 300
+  battery_power: 13.2
+  fuel_capacity: 43
+  reg: VF3M45GBUK 
+  max_elec_consumption: 70
+  max_fuel_consumption: 30
+- !CarModel
+  name: SUV 3008 Hybrid 195
+  battery_power: 17.8
+  fuel_capacity: 55
+  reg: VR3KBDGK0R 
+  max_elec_consumption: 70
+  max_fuel_consumption: 30
+- !CarModel
+  name: 3008 Plug-in Hybrid 195ch
+  battery_power: 17.8
+  fuel_capacity: 55
+  reg: VR3KBDGK9S
+  max_elec_consumption: 70
+  max_fuel_consumption: 30
+- !CarModel
+  name: SUV 3008 Hybrid4 300
+  battery_power: 13.2
+  fuel_capacity: 43
+  reg: VF3M45GBUM 
+  max_elec_consumption: 70
+  max_fuel_consumption: 30
+- !CarModel
+  name: SUV 3008 Hybrid4 300
+  battery_power: 13.2
+  fuel_capacity: 43
+  reg: VF3M45GBUN
+  max_elec_consumption: 70
+  max_fuel_consumption: 30
+- !CarModel
+  name: 508 PSE
+  battery_power: 11.5
+  fuel_capacity: 43
+  reg: VR3F35GBTM 
+  max_elec_consumption: 70
+  max_fuel_consumption: 30
+- !ElecModel
+  name: Combo-e Life
+  battery_power: 50
+  fuel_capacity: 0
+  reg: W0VEZZKXZN 
+  max_elec_consumption: 45 
+- !CarModel
+  name: New 308 SW
+  battery_power: 0
+  fuel_capacity: 56
+  reg: VR3FRHNSTN 
+  max_elec_consumption: 70
+  max_fuel_consumption: 30
+- !CarModel
+  name: New 308 SW PureTech 130 EAT8
+  battery_power: 0
+  fuel_capacity: 52
+  reg: VR3FRHNSTP 
+  max_elec_consumption: 70
+  max_fuel_consumption: 30
+- !CarModel
+  name: 5008 II 1.5 HDI GT-Line
+  battery_power: 0
+  fuel_capacity: 56
+  reg: VF3MCYHZRL 
+  max_elec_consumption: 70
+  max_fuel_consumption: 30
+- !CarModel
+  name: 5008 GT-LINE 1.5L
+  battery_power: 0
+  fuel_capacity: 60
+  reg: VF3MCYHZRJ 
+  max_elec_consumption: 70
+  max_fuel_consumption: 30
+- !CarModel
+  name: 308 SW Hybrid
+  battery_power: 12.4
+  fuel_capacity: 40
+  reg: VR3F4DGYTP 
+  max_elec_consumption: 70
+  max_fuel_consumption: 30
+- !CarModel
+  name: 308 SW PLUG-IN HYBRID (2026) 195 e-DSC7
+  battery_power: 17.2
+  fuel_capacity: 42
+  reg: VR3F4DGM2S 
+  max_elec_consumption: 70
+  max_fuel_consumption: 30
+- !CarModel
+  name: C5 Aircross
+  battery_power: 0
+  fuel_capacity: 45
+  reg: VR7ARHNSSP 
+  max_elec_consumption: 70
+  max_fuel_consumption: 30
+- !CarModel
+  name: C5 Aircross 1.5 BlueHDi 130
+  battery_power: 0
+  fuel_capacity: 53
+  reg: VR7ACYHZ7T
+  max_elec_consumption: 0
+  max_fuel_consumption: 30
+- !ElecModel
+  name: Combo-e Cargo XL
+  battery_power: 50
+  fuel_capacity: 0
+  reg: W0VEAZKXZP 
+  max_elec_consumption: 46
+- !CarModel
+  name: C4 SpaceTourer Shine Edition (2018)
+  battery_power: 0
+  fuel_capacity: 55
+  reg: VF73DHNSPJ 
+- !CarModel
+  name: C3 Feel Edition (2016)
+  battery_power: 0
+  fuel_capacity: 45
+  reg: VF7SCHMZ6F 
+- !CarModel
+  name: Vauxhall Corsa (2020)
+  battery_power: 0
+  fuel_capacity: 44
+  reg: VXKUPHNEKM 
+- !CarModel
+  name: C5 Aircross Hybrid E Series
+  battery_power: 13.2
+  fuel_capacity: 53
+  reg: VR7ARHPYEP 
+- !CarModel
+  name: Peugeot Rifter
+  battery_power: 0
+  fuel_capacity: 50
+  reg: VR3ECYHYCK 
+  max_elec_consumption: 0
+  max_fuel_consumption: 30
+- !ElecModel
+  name: e3008
+  battery_power: 73
+  fuel_capacity: 0
+  reg: VR3KCZKZ5R 
+  max_elec_consumption: 77
+  max_fuel_consumption: 0
+- !CarModel
+  name: SUV 3008 II 2021
+  battery_power: 0
+  fuel_capacity: 53
+  reg: VF3M45GFUL 
+  max_elec_consumption: 70
+  max_fuel_consumption: 30
+- !CarModel
+  name: 508 (R8) 2.0 HDI
+  battery_power: 0
+  fuel_capacity: 55
+  reg: VR3FHEHYRK 
+- !CarModel
+  name: Citroen C3 Flair (2019)
+  battery_power: 0
+  fuel_capacity: 45
+  reg: VF7SXHMRPK 
+- !CarModel
+  name: C3 Saint james edition
+  battery_power: 0
+  fuel_capacity: 42
+  reg: VF7SXHNP 
+- !CarModel
+  name: C4 Shine 2023
+  battery_power: 0
+  fuel_capacity: 50
+  reg: VR7BAHNSBP 
+- !CarModel
+  name: C5 Aircross Hybrid 2024
+  battery_power: 13.2
+  fuel_capacity: 43
+  reg: VR7A4DGL 
+  max_elec_consumption: 70
+  max_fuel_consumption: 30
+- !CarModel
+  name: 408 GT 1.3 Petrol
+  battery_power: 0
+  fuel_capacity: 52
+  reg: VR3FPHNSTP
+  max_elec_consumption: 70
+  max_fuel_consumption: 30
+- !CarModel
+  name: Citroën e-C3 IV
+  battery_power: 44
+  fuel_capacity: 0
+  reg: VR7CBZYA0R 
+  max_elec_consumption: 70
+  max_fuel_consumption: 30
+- !ElecModel
+  name: Citroën e-C3 IV
+  battery_power: 44
+  fuel_capacity: 0
+  reg: VR7CBZYA9S
+  max_elec_consumption: 70
+- !ElecModel
+  name: E-5008 73 kWh
+  battery_power: 73
+  fuel_capacity: 0
+  reg: VR3KCZKZ0S 
+  max_elec_consumption: 70
+- !ElecModel
+  name: E-5008 73 kWh GT
+  battery_power: 73
+  fuel_capacity: 0
+  reg: VR3KCZKZ1R 
+  max_elec_consumption: 70
+- !CarModel
+  name: 408 GT 1.2 Petrol
+  battery_power: 0
+  fuel_capacity: 52
+  reg: VR3FPHPY0S
+  max_elec_consumption: 70
+  max_fuel_consumption: 30
+- !CarModel
+  name: SUV 3008 II
+  battery_power: 0
+  fuel_capacity: 53
+  reg: VF3MRHNYWJ 
+  max_fuel_consumption: 30
+- !CarModel
+  name: SUV 3008 Hybrid4 300-2
+  battery_power: 13.2
+  fuel_capacity: 43
+  reg: VF3M45GBUP 
+  max_elec_consumption: 70
+  max_fuel_consumption: 30
+- !ElecModel
+  name: e-berlingo 2022+
+  battery_power: 50
+  fuel_capacity: 0
+  reg: VR7EAZKXZM 
+  max_elec_consumption: 70
+- !ElecModel
+  name: e-3008
+  battery_power: 73
+  fuel_capacity: 0
+  reg: VR3KCZKZXR 
+  max_elec_consumption: 70
+- !CarModel
+  name: Citroën C4 Piccasso
+  battery_power: 0
+  fuel_capacity: 55
+  reg: VF73AHNSPJ 
+- !ElecModel
+  name: Astra L Sports Tourer Electric GS
+  battery_power: 50.8
+  fuel_capacity: 0
+  reg: VXKFNZKWXR 
+  max_elec_consumption: 70
+- !ElecModel
+  name: E-308 Allure
+  battery_power: 50
+  fuel_capacity: 0
+  reg: VR3FMZKW3R 
+- !ElecModel
+  name: Citroen Ami
+  battery_power: 5.35
+  fuel_capacity: 0
+  reg: VR79AZ2CAR 
+  max_elec_consumption: 6
+- !CarModel
+  name: Spacetourer 2022 2.0 BlueHDi 140
+  battery_power: 0
+  fuel_capacity: 55
+  reg: VF7VEEHTMN 
+- !CarModel
+  name: C5 Aircross 2020
+  battery_power: 0
+  fuel_capacity: 45
+  reg: VR7ARHNSSM 
+  max_elec_consumption: 70
+  max_fuel_consumption: 30
+- !ElecModel
+  name: corsa f electric
+  battery_power: 48.1
+  fuel_capacity: 0
+  reg: VXKUHZKWZP 
+  max_elec_consumption: 70
+  max_fuel_consumption: 0
+- !CarModel
+  name: Opel Corsa F
+  battery_power: 0
+  fuel_capacity: 44
+  reg: VXKUPHNSSP 
+- !CarModel
+  name: Opel Astra L
+  battery_power: 0
+  fuel_capacity: 52
+  reg: VXKFPHNS2R 
+- !CarModel
+  name: 408 GT Hybrid 225
+  battery_power: 12.4
+  fuel_capacity: 40
+  reg: VR3F3DGY2R 
+- !ElecModel
+  name: E-C4X
+  battery_power: 46
+  fuel_capacity: 0
+  reg: VR7BFZKX 
+  max_elec_consumption: 70
+  max_fuel_consumption: 0
+- !CarModel
+  name: E-308 SW
+  battery_power: 50.8
+  fuel_capacity: 0
+  reg: VR3FNZKW4R 
+  max_elec_consumption: 70
+- !ElecModel
+  name: E-308 SW 54kWh
+  battery_power: 50.8
+  fuel_capacity: 0
+  reg: VR3FNZKW9R 
+  max_elec_consumption: 70
+  max_fuel_consumption: 0
+- !ElecModel
+  name: E-308 SW 54kWh
+  battery_power: 50.8
+  fuel_capacity: 0
+  reg: VR3FNZKWZR 
+  max_elec_consumption: 70
+  max_fuel_consumption: 0
+- !CarModel
+  name: 308 SW GT Hybrid
+  battery_power: 12.4
+  fuel_capacity: 40
+  reg: VR3F4DGY6R 
+  max_elec_consumption: 70
+  max_fuel_consumption: 30
+- !ElecModel
+  name: Opel Astra Sports Tourer Electric
+  battery_power: 50.5
+  fuel_capacity: 0
+  reg: VXKFNZKW0R 
+  max_elec_consumption: 70
+- !ElecModel
+  name: E-C4 54 kWh
+  battery_power: 50.8
+  fuel_capacity: 0
+  reg: VR7BCZKW 
+  max_elec_consumption: 70
+  max_fuel_consumption: 0
+- !CarModel
+  name: 408 GT 1.6 PHEV 225
+  battery_power: 12.4
+  fuel_capacity: 40
+  reg: VR3F3DGY7 
+  max_elec_consumption: 70
+  max_fuel_consumption: 30
+- !CarModel
+  name: Opel Corsa Facelift (2024)
+  battery_power: 0
+  fuel_capacity: 44
+  reg: VXKUPHNEKR 
+- !CarModel
+  name: Vauxhall Astra Design Turbo
+  battery_power: 0
+  fuel_capacity: 52
+  reg: VXKFPHNPLN
+- !ElecModel
+  name: Astra L Sports Tourer Electric GS
+  battery_power: 50.8
+  fuel_capacity: 0
+  reg: VXKFNZKW3S
+  max_elec_consumption: 70
+- !ElecModel
+  name: Vauxhall Corsa Electric
+  battery_power: 46
+  fuel_capacity: 0
+  reg: VXKUPHNEKP
+  max_elec_consumption: 70
+  max_fuel_consumption: 0
+- !CarModel
+  name: '208(2017-2019)'
+  battery_power: 0
+  fuel_capacity: 44
+  reg: VF3CCHMRPJ.*
+  max_elec_consumption: 70
+  max_fuel_consumptipn: 30
+- !ElecModel
+  name: E-Partner 50 kWh (2024)
+  battery_power: 50
+  fuel_capacity: 0
+  reg: VR3ENZKUXR.*
+  max_elec_consumption: 50
+- !CarModel
+  name: Spacetourer Vanster 2021
+  battery_power: 0
+  fuel_capacity: 70
+  reg: VF7VEAHXKL.*
+- !ElecModel
+  name: e-5008 Single Motor 73 kWh
+  battery_power: 73
+  fuel_capacity: 0
+  reg: VR3KCZKZ4R.*
+  max_elec_consumption: 70
+- !CarModel
+  name: 3008-III
+  battery_power: 0
+  fuel_capacity: 53
+  reg: VR3KAHPY1R
+  max_elec_consumption: 70
+  max_fuel_consumption: 30
+- !CarModel
+  name: Opel Corsa Electric GS Long Range (2025)
+  battery_power: 54
+  fuel_capacity: 0
+  reg: VXKUHZKW4S
+  max_elec_consumption: 70
+  max_fuel_consumption: 0
+- !CarModel
+  name: Opel Corsa Electric Long Range (2026)
+  battery_power: 50.8
+  fuel_capacity: 0
+  reg: VXKUHZKW1T
+  max_elec_consumption: 70
+  max_fuel_consumption: 0
+- !ElecModel
+  name: Astra L Electric GS
+  battery_power: 51
+  fuel_capacity: 0
+  reg: VXKFNZKW9S 
+  max_elec_consumption: 70
+- !CarModel
+  name: Berlingo 2018+ Diesel
+  battery_power: 0
+  fuel_capacity: 50
+  reg: VR7ECYHZRK
+- !ElecModel
+  name: e-C5 Comfort Range
+  battery_power: 73
+  fuel_capacity: 0
+  reg: VR7KCZKZ9S 
+  max_elec_consumption: 70
+- !CarModel
+  name: Grandland Electric 73kWh AWD
+  battery_power: 73
+  fuel_capacity: 0
+  reg: VXKKCZKZ6T
+  max_elec_consumption: 70
+  max_fuel_consumption: 0
+- !ElecModel
+  name: Mokka-e 2024+
+  battery_power: 51
+  fuel_capacity: 0
+  reg: VXKUKZKW0S
+  max_elec_consumption: 70

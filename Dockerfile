@@ -1,31 +1,38 @@
-ARG PYTHON_DEP='python3 python3-wheel python3-typing-extensions python3-pandas python3-six python3-dateutil python3-brotli python3-pycryptodome libatlas3-base python3-cryptography python3-scipy androguard python3-flask python3-paho-mqtt python3-ruamel.yaml ca-certificates python3-numpy'
-ARG DEBIAN_FRONTEND=noninteractive
-FROM debian:bookworm-slim AS builder
-ARG PYTHON_DEP
-RUN  BUILD_DEP='python3-pip python3-setuptools python3-dev libblas-dev liblapack-dev gfortran libffi-dev libxml2-dev libxslt1-dev make automake gcc g++ subversion ninja-build' ; \
-     apt-get update && apt-get install -y --no-install-recommends $BUILD_DEP $PYTHON_DEP;
-ARG PSACC_VERSION="0.0.0"
-RUN pip3 install --break-system-packages --upgrade pip wheel setuptools
-COPY ./dist/psa_car_controller-${PSACC_VERSION}-py3-none-any.whl .
-RUN pip3 install --break-system-packages --no-cache-dir psa_car_controller-${PSACC_VERSION}-py3-none-any.whl
+FROM node:22-alpine AS frontend
+WORKDIR /frontend
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+COPY frontend/ ./
+RUN npm run build
+
+FROM python:3.12-slim-bookworm
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PSACC_DATA_DIR=/data \
+    PSACC_STATIC_DIR=/app/static \
+    TZ=Atlantic/Azores
+
+WORKDIR /app
+COPY backend/ /app/backend/
+RUN pip install --no-cache-dir -c backend/requirements.lock ./backend
+
+# Headless Chromium for the PSA login, in a path readable by the unprivileged app user. Not available on
+# armv7: skipped there (the setup falls back to the manual flow); on other architectures a failure fails the build.
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+# libatomic1 is needed by Playwright's bundled node.
+RUN set -e;     if [ "$(uname -m)" = "armv7l" ]; then         echo "armv7: skipping Playwright";     else         apt-get update && apt-get install -y --no-install-recommends libatomic1;         playwright install --with-deps --only-shell chromium;         chmod -R a+rX /ms-playwright;     fi;     rm -rf /var/lib/apt/lists/*
+
+COPY --from=frontend /frontend/dist /app/static
+
+RUN useradd --system --create-home --uid 10001 psacc && mkdir -p /data && chown psacc:psacc /data
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
+VOLUME /data
 EXPOSE 5000
 
-FROM debian:bookworm-slim
-ARG PYTHON_DEP
-WORKDIR /config
-ENV PSACC_BASE_PATH=/ PSACC_PORT=5000 PSACC_OPTIONS="-c -r --web-conf" PSACC_CONFIG_DIR="/config" PYTHONPATH="/app"
-COPY --from=builder /var/lib/apt /var/lib/apt
-COPY --from=builder /var/cache/apt/ /var/cache/apt/
-COPY --from=builder /usr/local/lib /usr/local/lib
-COPY --from=builder /usr/local/bin/  /usr/local/bin/
-RUN  apt-get install -y --no-install-recommends $PYTHON_DEP curl && \
-     apt-get clean ; \
-     rm -rf /var/lib/apt/lists/*
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+    CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:5000/api/health', timeout=4).status == 200 else 1)"
 
-# Install Playwright and Chromium headless shell dependencies (skip on ARM where not available via pip)
-RUN pip3 install --break-system-packages playwright 2>/dev/null && \
-    playwright install --with-deps --only-shell chromium 2>/dev/null || \
-    echo "Playwright not available on this architecture, headless auth will use manual fallback"
-
-COPY /docker_files/init.sh /init.sh
-CMD /init.sh
+ENTRYPOINT ["docker-entrypoint.sh"]
+CMD ["uvicorn", "psacc.main:app", "--host", "0.0.0.0", "--port", "5000"]

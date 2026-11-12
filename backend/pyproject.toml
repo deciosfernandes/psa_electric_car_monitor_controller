@@ -1,0 +1,44 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "psacc"
+version = "0.1.0"
+description = "PSA car controller backend"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "sqlmodel",
+    "pydantic>=2",
+    "requests",
+    "paho-mqtt>=1.5,<2",
+    "cryptography",
+    "pycryptodomex==3.23.0",
+    "oauth2-client",
+    "androguard",
+    "playwright; platform_machine != 'armv7l'",
+    "itsdangerous",
+    "ruamel.yaml",
+    "certifi",
+    "tzdata",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "ruff", "httpx"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["psacc"]
+exclude = ["psacc/psa/api-b2c-*.yaml"]  # API reference only, not needed at runtime
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# starlette's TestClient wants the httpx2 fork; plain httpx still works
+filterwarnings = ["ignore:Using `httpx` with `starlette.testclient` is deprecated"]
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "W"]

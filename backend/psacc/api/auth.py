@@ -1,0 +1,98 @@
+import threading
+
+from fastapi import APIRouter, HTTPException, Request
+from pydantic import BaseModel, Field
+
+from .. import store
+from ..auth import (
+    MAX_PASSWORD_LEN,
+    MIN_PASSWORD_LEN,
+    LoginRateLimiter,
+    hash_password,
+    is_logged_in,
+    start_session,
+    verify_password,
+)
+
+router = APIRouter(prefix="/api/auth")
+
+_setup_lock = threading.Lock()  # two concurrent first-run setups must not both set a password
+
+
+class PasswordIn(BaseModel):
+    password: str = Field(max_length=MAX_PASSWORD_LEN)  # scrypt cost must not depend on attacker-sized input
+
+
+class PasswordChangeIn(BaseModel):
+    current: str = Field(max_length=MAX_PASSWORD_LEN)
+    new: str = Field(max_length=MAX_PASSWORD_LEN)
+
+
+@router.get("/state")
+def auth_state(request: Request) -> dict:
+    return {"configured": store.get_config().password_hash is not None, "logged_in": is_logged_in(request)}
+
+
+@router.post("/setup")
+def setup_password(body: PasswordIn, request: Request) -> dict:
+    if len(body.password) < MIN_PASSWORD_LEN:
+        raise HTTPException(422, f"A palavra-passe tem de ter pelo menos {MIN_PASSWORD_LEN} caracteres")
+    with _setup_lock:
+        cfg = store.get_config()
+        if cfg.password_hash is not None:
+            raise HTTPException(409, "A palavra-passe já está definida")
+        cfg.password_hash = hash_password(body.password)
+        store.save_config(cfg)
+    start_session(request, cfg.session_epoch)
+    return {"ok": True}
+
+
+@router.post("/login")
+def login(body: PasswordIn, request: Request) -> dict:
+    limiter: LoginRateLimiter = request.app.state.login_limiter
+    stored = store.get_config().password_hash
+    if stored is None:
+        raise HTTPException(409, "A palavra-passe ainda não foi definida")
+    if not limiter.try_acquire():
+        raise HTTPException(429, "Demasiadas tentativas falhadas. Tente novamente dentro de 5 minutos.")
+    ok = False
+    try:
+        ok = verify_password(body.password, stored)
+    finally:
+        limiter.release(ok)
+    if not ok:
+        raise HTTPException(401, "Palavra-passe incorreta")
+    start_session(request, store.get_config().session_epoch)
+    return {"ok": True}
+
+
+@router.post("/password")
+def change_password(body: PasswordChangeIn, request: Request) -> dict:
+    if not is_logged_in(request):
+        raise HTTPException(401, "Sessão inválida, inicie sessão")
+    if len(body.new) < MIN_PASSWORD_LEN:
+        raise HTTPException(422, f"A palavra-passe tem de ter pelo menos {MIN_PASSWORD_LEN} caracteres")
+    limiter: LoginRateLimiter = request.app.state.login_limiter
+    cfg = store.get_config()
+    if cfg.password_hash is None:
+        raise HTTPException(409, "A palavra-passe ainda não foi definida")
+    if not limiter.try_acquire():
+        raise HTTPException(429, "Demasiadas tentativas falhadas. Tente novamente dentro de 5 minutos.")
+    ok = False
+    try:
+        ok = verify_password(body.current, cfg.password_hash)
+    finally:
+        limiter.release(ok)
+    if not ok:
+        raise HTTPException(401, "Palavra-passe atual incorreta")
+    cfg.password_hash = hash_password(body.new)
+    cfg.session_epoch += 1  # revokes every other session
+    store.save_config(cfg)
+    start_session(request, cfg.session_epoch)
+    return {"ok": True}
+
+
+@router.post("/logout")
+def logout(request: Request) -> dict:
+    request.session.clear()
+    return {"ok": True}

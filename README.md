@@ -1,80 +1,146 @@
-# Remote Control of PSA car
-[![Codacy Badge](https://api.codacy.com/project/badge/Grade/4b4b98fe6dc04956a1c9a07b97c46c06)](https://app.codacy.com/gh/flobz/psa_car_controller?utm_source=github.com&utm_medium=referral&utm_content=flobz/psa_car_controller&utm_campaign=Badge_Grade_Settings)
-[![Codacy Badge](https://app.codacy.com/project/badge/Coverage/f4082f146ad044bb900e1683035a540b)](https://www.codacy.com/gh/flobz/psa_car_controller/dashboard?utm_source=github.com&utm_medium=referral&utm_content=flobz/psa_car_controller&utm_campaign=Badge_Coverage)
-[![Publish Docker image](https://github.com/flobz/psa_car_controller/actions/workflows/Docker_build.yml/badge.svg?branch=master)](https://hub.docker.com/repository/docker/flobz/psa_car_controller)
-[![Donate](https://img.shields.io/badge/Donate-PayPal-blue.svg)](https://www.paypal.com/donate?hosted_button_id=SM652WPXFNCXS)
-### This is a Python program to control and get information from a PSA car.
-I test it with a Peugeot e-208, but it works with other PSA vehicles (Citroen, Opel, Vauxhall, DS).
+# PSA Electric Car Monitor & Controller
 
-With this app you will be able to:
- - get the status of the car (battery level for electric vehicle, position ... )
- - start and stop the charge
- - set a charge threshold to limit the battery level to a certain percentage
- - set a stop hour to charge your vehicle only on off-peak hours
- - control air conditioning
- - control lights and horn if your vehicle is compatible
- - lock and unlock doors
- - get consumption statistics
- - visualize your trips on a map or in a table
- - get the list of car charging  
- - visualize battery charging curve
- - visualize altitude trip curve
- - get car charging CO2 emission
- - get car charging price
- - send live data to ABetterRoutePlanner
+Personal web app to monitor and control a PSA/Stellantis electric car (tested with a Peugeot e-208) and
+**charge automatically only during off-peak ("vazio") hours** of the EDA — Electricidade dos Açores tariff
+(tri-hourly, weekly cycle).
 
-The official API is documented [here](https://developer.groupe-psa.io/webapi/b2c/quickstart/connect/#article) but it is not totally up to date, and contains some errors. 
+> Based on [**psa_car_controller**](https://github.com/flobz/psa_car_controller) by
+> [**flobz**](https://github.com/flobz), the original author. All of the PSA integration (OAuth login, OTP code,
+> remote commands over MQTT) builds on that project's reverse-engineering work. This version is a rewrite for
+> personal use, with a new interface, a new architecture and tariff-driven automation. Many thanks to the
+> author and all contributors of the original project.
 
+## Features
 
- ## I. Installation
-- [Installation on Linux or Windows](docs/Install.md)
-- [Installation as Home Assistant addon](https://github.com/flobz/psacc-ha/blob/main/psacc-ha/README.md)  
-- [Installation in Docker](docs/Docker.md)
-- [Installation on Raspberry Pi with docker-compose (external Tutorial)](https://return2.net/opel-peugeot-electric-vehicle-set-charging-threshold-limit/)
- ## II. Use the API
+- **Dashboard (Painel)** — battery, range, charging state, today's tariff strip (vazio / cheias / ponta) with
+  the next automatic event, last-24 h battery chart and activity log.
+- **Charging automation** — drives the car's deferred-charging mode:
+  - turns deferred charging off at the start of off-peak (+ offset, 10 min by default → `00:10`);
+  - turns it back on before off-peak ends (− offset → `06:50`);
+  - respects a battery limit (80 % by default);
+  - merges back-to-back off-peak windows (e.g. Saturday 23:00 → Monday 07:00) with no commands at midnight;
+  - verifies every command, retries, and alerts on failure.
+- **Editable tariff** — built-in "EDA tri-horário semanal" preset (summer June–October, winter November–May),
+  weekly grid in 15-minute blocks, and per-period prices with an effective-from date.
+- **Controls** — "Charge now" (overrides the automation until the limit is reached or the cable is unplugged),
+  climate control, locks, horn, lights and car wake-up.
+- **Discord alerts** — command failure, expired PSA session, MQTT connection down; optionally charge
+  start/stop.
+- **Portuguese (pt-PT) interface**, light and dark theme, 24-hour clock, `Atlantic/Azores` timezone.
 
-Look at [API documentation](./docs/psacc_api.md)
+Charges, Trips and Consumption are shown as "Em breve" (coming soon).
 
-## III. Use the dashboard
+## Important warnings
 
-You can add the -r argument to record the position of the vehicle and retrieve this information in a dashboard.
+- **Use on your local network (LAN) only.** The app controls a real car (including unlocking it) and is
+  protected by a single password. Do not expose it to the Internet.
+- **Run the diagnostic script before trusting the automation** (see below). It is the only way to confirm that
+  deferred mode stops an ongoing charge and which timezone the car uses for the programmed hour.
+- The PSA API is not officially intended for this use and may change without notice.
 
-``python3 psa-car-controller -f config.json -c charge_config.json -r``
-    
-You will be able to visualize your trips, your consumption and some statistics:
-    
-     
-![Screenshot_20210128_104519](https://user-images.githubusercontent.com/48728684/106119895-01c98d80-6156-11eb-8969-9e8bc24f3677.png)
-- You have to add an API key from https://home.openweathermap.org/ in your config file, to be able to see your consumption vs exterior temperature.
-- You have to add an API key from https://co2signal.com/ to have your CO2 emission by KM (in France the key isn't needed). 
-### IV. Charge price calculation
-The dashboard can give you the price by kilometer and price by kw that you pay.
-You just have to set the price in the config file.
+## Installation (Docker)
 
-After a successful launch of the app, a config.ini file will be created.
-In this file you can set the price you pay for electricity in the following format "0.15".
+Requirements: Docker with Docker Compose.
 
-If you have a special price during the night you can set "night price", "night hour start" and "night hour end". 
-Hours need to be in the following format "23h12".
+```bash
+git clone https://github.com/deciosfernandes/psa_electric_car_monitor_controller.git
+cd psa_electric_car_monitor_controller
+docker compose up -d --build
+```
 
-You can modify a price manually in the dashboard. It can be useful if you use public charge point.
-## V. Connection to other services:
-- [Domoticz](docs/domoticz/Domoticz.md)
-- [HomeAssistant](https://github.com/Flodu31/HomeAssistant-PeugeotIntegration)
-- Jeedom (Anyone can share the procedure ?)
-- You can send live car status to ABRP (A better Route Planner), see [this page](docs/abrp.md)
-- [Grafana](https://github.com/flobz/psa_car_controller/issues/161)
+Open `http://<server>:5000`.
 
-## FAQ
-If you have a problem or a question, please check if the answer isn't already in the [FAQ](FAQ.md). 
+### First run
 
-## Contribute
-If you need information to contribute or edit this program go [here](docs/Develop.md).
+1. Set the app password (first visit).
+2. **Definições → Conta PSA** (Settings → PSA account): pick the app (MyPeugeot, MyCitroën, …), country and
+   account credentials. If the automatic login fails, the app shows a link to finish the login manually and
+   paste the code.
+3. Request the SMS code and enter it together with your mobile app PIN.
+4. **Automação** (Automation): check the offset (10 min), battery limit (80 %) and tariff hours, and fill in
+   the off-peak / mid-peak / peak prices.
+5. **Definições → Discord** (optional): paste the webhook URL and use "Enviar teste" (send test).
+6. Run the diagnostic script (below).
 
-## Donation
-If you want to thank me for my work :smile:
+### Data and backups
 
-[![donate](https://www.paypalobjects.com/en_US/i/btn/btn_donate_LG.gif)](https://www.paypal.com/donate?hosted_button_id=SM652WPXFNCXS)
+Everything lives in `./data` (mounted at `/data` in the container): database, configuration, PSA tokens, OTP
+secret and certificates. The folder is created and restricted automatically so only the app can read it; the
+app runs as a non-root user. Back up this folder and never share it.
 
-## Acknowledgements
-- thanks to @tamcore for https://github.com/tamcore/stelloauth 
+### Updating
+
+```bash
+git pull
+docker compose up -d --build
+```
+
+Data in `./data` is kept.
+
+## Diagnostic script
+
+Required **once**, with the car plugged in and the battery below the limit, ideally during winter time (when
+the Azores are at UTC−1 the timezone test is conclusive). It takes 20–60 minutes because PSA rate-limits car
+wake-up requests.
+
+**Stop the app first** (`docker compose down`): the script and the app must not use the same PSA credentials
+at the same time.
+
+```bash
+cd backend
+python -m venv .venv
+.venv/Scripts/pip install -e '.[dev]'          # Linux/macOS: .venv/bin/pip
+.venv/Scripts/python scripts/spike_deferred.py # Linux/macOS: .venv/bin/python
+```
+
+To share credentials with the Docker app, first point `PSACC_DATA_DIR` at the repository's `data` folder
+(PowerShell: `$env:PSACC_DATA_DIR = "..\data"`).
+
+The result is written to `spike-report.json` in the data folder, without tokens, VIN or location. Timezone
+verdict:
+
+| Result | Meaning |
+|---|---|
+| `local` | The car reads the hour in Azores local time — the automation can be used. |
+| `utc` | The car reads the hour in UTC — do not use the automation until this is fixed. |
+| `inconclusive` | The test was not conclusive (see `reason`) — run the script again. |
+
+More details in [`backend/psacc/psa/NOTES.md`](backend/psacc/psa/NOTES.md).
+
+## Development
+
+Backend (Python 3.12, FastAPI):
+
+```bash
+cd backend
+python -m venv .venv
+.venv/Scripts/pip install -e '.[dev]'
+.venv/Scripts/python -m pytest -q
+.venv/Scripts/python -m ruff check psacc tests
+PSACC_FAKE=1 .venv/Scripts/python -m uvicorn psacc.main:app --port 8000
+```
+
+`PSACC_FAKE=1` uses an in-memory simulated car (demo mode, with a visible banner in the UI). Never use it in
+production.
+
+Frontend (Node 22, Vite + React + TypeScript + Tailwind):
+
+```bash
+cd frontend
+npm ci
+npm run dev     # http://localhost:5173, /api proxied to http://127.0.0.1:8000
+npm test
+npm run lint
+npm run build
+```
+
+Architecture and developer commands are in [`CLAUDE.md`](CLAUDE.md); the full design is in
+[`docs/superpowers/specs/`](docs/superpowers/specs/).
+
+## Credits and license
+
+- Original project: [flobz/psa_car_controller](https://github.com/flobz/psa_car_controller), by
+  [flobz](https://github.com/flobz) and contributors.
+- Tariff hours: "Ciclo Semanal" leaflet from [EDA — Electricidade dos Açores](https://www.eda.pt).
+
+Licensed under **GPL-3.0**, like the original project — see [`LICENSE`](LICENSE).
