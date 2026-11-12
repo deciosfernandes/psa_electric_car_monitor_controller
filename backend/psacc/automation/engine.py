@@ -222,6 +222,8 @@ class Engine:
     def _record_status(self, snap: CarSnapshot) -> None:
         if snap.soc is not None:
             store.add_battery_sample(snap.at, snap.soc, bool(snap.charging))
+        if snap.battery_health is not None:
+            store.add_health_sample(snap.at.astimezone(TZ).date(), snap.battery_health)
         if snap.plugged is None:
             return
         if self._plugged is not None and snap.plugged != self._plugged:

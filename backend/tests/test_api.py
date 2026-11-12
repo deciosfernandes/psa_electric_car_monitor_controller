@@ -190,7 +190,13 @@ def test_status_shape(logged):
         "mqtt_connected",
         "psa_connected",
         "updated_at",
+        "where",
+        "place_name",
+        "mileage_km",
+        "position_age_min",
     }
+    assert body["where"] in ("unset", "unknown")  # no snapshot evaluated yet
+    assert body["place_name"] is None
     assert body["period"] in ("vazio", "cheias", "ponta")
     assert body["automation"] == {"enabled": True, "offset_min": 10, "battery_limit": 80}
     assert body["mqtt_connected"] is True
@@ -293,7 +299,12 @@ def test_settings_hide_webhook(logged):
     )
     assert r.status_code == 200
     body = logged.get("/api/settings").json()
-    assert body == {"discord_webhook_set": True, "discord_info": True, "refresh_min": 10}
+    assert body == {
+        "discord_webhook_set": True,
+        "discord_info": True,
+        "refresh_min": 10,
+        "battery_capacity_kwh": 46,
+    }
     assert "discord.example" not in r.text
 
 
@@ -452,3 +463,22 @@ def test_places_from_car(logged):
     r = logged.post("/api/places/from-car", json={"name": "Trabalho", "kind": "work"})
     assert r.status_code == 200
     assert (r.json()["lat"], r.json()["lon"], r.json()["kind"]) == (10.5, 20.5, "work")
+
+
+def test_settings_capacity_range_and_keep(logged):
+    base = {"discord_info": False, "refresh_min": 5}
+    for bad in (9.9, 150.1):
+        assert logged.put("/api/settings", json={**base, "battery_capacity_kwh": bad}).status_code == 422
+    assert logged.put("/api/settings", json={**base, "battery_capacity_kwh": 50}).json()["battery_capacity_kwh"] == 50
+    assert logged.put("/api/settings", json=base).json()["battery_capacity_kwh"] == 50  # omitted: kept
+
+
+def test_battery_health_endpoint(logged):
+    from datetime import date
+
+    store.add_health_sample(date(2026, 11, 11), 95.0)
+    store.add_health_sample(date(2026, 11, 12), 94.5)
+    assert logged.get("/api/battery-health").json() == [
+        {"day": "2026-11-11", "value": 95.0},
+        {"day": "2026-11-12", "value": 94.5},
+    ]

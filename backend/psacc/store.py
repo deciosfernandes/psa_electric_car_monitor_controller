@@ -2,7 +2,7 @@ import json
 import logging
 import os
 import secrets
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -30,6 +30,7 @@ class AppConfig(BaseModel):
     password_hash: str | None = None
     session_secret: str = Field(default_factory=lambda: secrets.token_hex(32))
     vin: str | None = None
+    battery_capacity_kwh: float = Field(46, ge=10, le=150)  # usable capacity
     session_epoch: int = 0  # bumped on password change: sessions issued before it stop being valid
 
 
@@ -93,6 +94,11 @@ class BatterySampleRow(SQLModel, table=True):
     at: datetime = SQLField(index=True)
     soc: float
     charging: bool
+
+
+class HealthSampleRow(SQLModel, table=True):
+    day: date = SQLField(primary_key=True)  # Azores local day
+    value: float
 
 
 class PlaceRow(SQLModel, table=True):
@@ -275,6 +281,18 @@ def battery_samples(since: datetime) -> list[BatterySample]:
         q = select(BatterySampleRow).where(BatterySampleRow.at >= _utc(since)).order_by(BatterySampleRow.at)
         rows = s.exec(q).all()
         return [BatterySample(at=_utc(r.at), soc=r.soc, charging=r.charging) for r in rows]
+
+
+def add_health_sample(day: date, value: float) -> None:
+    """One battery-health sample per (Azores) day: a later value for the same day replaces it."""
+    with _session() as s:
+        s.merge(HealthSampleRow(day=day, value=value))
+        s.commit()
+
+
+def health_samples() -> list[tuple[date, float]]:
+    with _session() as s:
+        return [(r.day, r.value) for r in s.exec(select(HealthSampleRow).order_by(HealthSampleRow.day)).all()]
 
 
 def _place(row: PlaceRow) -> Place:
