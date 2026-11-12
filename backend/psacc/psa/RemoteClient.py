@@ -38,6 +38,8 @@ MAX_REFRESH_DELAY = 120
 # so it must run well within that lifetime: 8h keeps the chain rotating forever and
 # survives one missed cycle.
 KEEPALIVE_PERIOD = 3600 * 8
+# paho connects asynchronously: CONNACK arrives on the network thread some seconds after connect()
+CONNECT_TIMEOUT_S = 15
 
 
 class RemoteException(Exception):
@@ -68,8 +70,9 @@ class RemoteClient:
             "accept": "application/hal+json",
             "User-Agent": "okhttp/4.8.0",
         }
-        self.last_request = None
+        self.last_request: MQTTRequest | None = None  # sent and not answered yet: re-sent once on token expiry
         self.mqtt_client = None
+        self._connected = threading.Event()
         self.otp = None
         self._lock = threading.Lock()
         self.update_thread: threading.Timer = None
@@ -81,6 +84,8 @@ class RemoteClient:
 
     def __on_mqtt_connect(self, client, userdata, result_code, _):  # pylint: disable=unused-argument
         logger.info("Connected with result code %s", result_code)
+        if result_code != 0:
+            return
         topics = [MQTT_RESP_TOPIC + self.account_info.get_mqtt_customer_id() + "/#"]
         for car in self.vehicles_list:
             topics.append(MQTT_EVENT_TOPIC + car.vin)
@@ -88,8 +93,10 @@ class RemoteClient:
             client.subscribe(topic)
             logger.debug("subscribe to %s", topic)
         logger.info("MQTT subscribed to %d topics", len(topics))
+        self._connected.set()
 
     def _on_mqtt_disconnect(self, client, userdata, result_code):  # pylint: disable=unused-argument
+        self._connected.clear()
         logger.warning("Disconnected with result code %d", result_code)
         if result_code == 1:
             self._refresh_remote_token(force=True)
@@ -108,17 +115,8 @@ class RemoteClient:
             if msg.topic.startswith(MQTT_RESP_TOPIC):
                 if "return_code" not in data:
                     logger.debug("mqtt msg hasn't return code")
-                elif data["return_code"] == "400":
-                    self._refresh_remote_token(force=True)
-                    if self.last_request:
-                        logger.warning("last request is send again, token was expired")
-                        last_request = self.last_request
-                        self.last_request = None
-                        self.publish(last_request, store=False)
-                    else:
-                        logger.error("Last request might have been send twice without success")
-                elif data["return_code"] != "0":
-                    logger.error('mqtt error %s : %s', data["return_code"], data.get("reason", "?"))
+                else:
+                    self._on_response(data)
             elif msg.topic.startswith(MQTT_EVENT_TOPIC):
                 programs = (data.get("precond_state") or {}).get("programs")
                 if programs:
@@ -127,6 +125,25 @@ class RemoteClient:
                 self._dispatch_event(data)
         except KeyError:
             logger.exception("on_mqtt_message:")
+
+    def _on_response(self, data: dict) -> None:
+        """A command response. Only the request it answers (same correlation id; any, when the response has
+        none) and only while recent is re-sent once on an expired token, always under a new correlation id: a
+        replay of an answered or stale request is what PSA rejects as 502 duplicate.message.key."""
+        code, correlation_id = data["return_code"], data.get("correlation_id")
+        pending = self.last_request
+        answers_pending = pending is not None and correlation_id in (None, pending.correlation_id)
+        if answers_pending:
+            self.last_request = None  # answered: never replay it later
+        if code == "400":
+            self._refresh_remote_token(force=True)
+            if answers_pending and not pending.is_expired():
+                logger.warning("token was expired: request sent again")
+                self.publish(pending, store=False)
+            else:
+                logger.error("token was expired: request %s not sent again (not pending or too old)", correlation_id)
+        elif code != "0":
+            logger.error("mqtt error %s : %s (correlation_id %s)", code, data.get("reason", "?"), correlation_id)
 
     def _dispatch_event(self, data: dict) -> None:
         for callback in self.on_event:
@@ -164,10 +181,15 @@ class RemoteClient:
                 self.mqtt_client.on_connect = self.__on_mqtt_connect
                 self.mqtt_client.on_message = self._on_mqtt_message
                 self.mqtt_client.on_disconnect = self._on_mqtt_disconnect
+                self._connected.clear()
                 self.mqtt_client.connect(MQTT_SERVER, 8885, 60)
                 self.mqtt_client.loop_start()
+                # wait for CONNACK (on the paho thread) so that the keepalive wakeup is not sent before it
+                connected = self._connected.wait(CONNECT_TIMEOUT_S)
+                if not connected:
+                    logger.warning("MQTT not connected after %ss, paho keeps retrying", CONNECT_TIMEOUT_S)
                 self.__keep_mqtt()
-                return self.mqtt_client.is_connected()
+                return connected
         logger.error("Can't configure MQTT Client")
         return False
 
