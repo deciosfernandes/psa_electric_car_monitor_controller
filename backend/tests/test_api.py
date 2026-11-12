@@ -195,7 +195,9 @@ def test_status_shape(logged):
         "place_name",
         "mileage_km",
         "position_age_min",
+        "paused_reason",
     }
+    assert body["paused_reason"] == "Posição do carro desconhecida" or body["paused_reason"] == "Defina o local Casa"
     assert body["where"] in ("unset", "unknown")  # no snapshot evaluated yet
     assert body["place_name"] is None
     assert body["period"] in ("vazio", "cheias", "ponta")
@@ -204,6 +206,15 @@ def test_status_shape(logged):
     assert body["next_event"]["action"] in ("charge", "defer")
     assert datetime.fromisoformat(body["next_event"]["at"]).utcoffset() is not None
     assert datetime.fromisoformat(body["updated_at"]).utcoffset() is not None
+
+
+def test_status_paused_reason(logged):
+    engine = logged.app.state.poller.engine
+    engine.last_where = "home"
+    assert logged.get("/api/status").json()["paused_reason"] is None
+    engine.last_where = "other"
+    engine.last_place = Place(name="Lagoa", kind="other", lat=1.0, lon=1.0)
+    assert logged.get("/api/status").json()["paused_reason"] == "Fora de Casa (Lagoa)"
 
 
 def test_status_serialises_car(logged, monkeypatch):
@@ -552,10 +563,11 @@ def test_charge_price_put(logged):
 def test_charges_summary_month_uses_azores_time(logged):
     _seed_history()
     oct_ = logged.get("/api/charges/summary", params={"month": "2026-10"}).json()
-    assert set(oct_) == {"kwh", "cost_eur", "work_pct", "home_pct", "avg_home_eur_kwh"}
+    assert set(oct_) == {"kwh", "cost_eur", "work_pct", "home_pct", "avg_home_eur_kwh", "unpriced", "partial"}
     assert oct_["kwh"] == pytest.approx(23.0 + 9.2)
     assert oct_["home_pct"] == pytest.approx(23.0 / 32.2 * 100)
     assert oct_["work_pct"] == pytest.approx(9.2 / 32.2 * 100)
+    assert oct_["unpriced"] == 1 and oct_["partial"] == 0  # seeded: one session without a price
     nov = logged.get("/api/charges/summary", params={"month": "2026-11"}).json()
     assert nov["kwh"] == pytest.approx(4.6)  # 01:00 UTC 1 Nov = 00:00 Azores, November
     assert logged.get("/api/charges/summary", params={"month": "bad"}).status_code == 422

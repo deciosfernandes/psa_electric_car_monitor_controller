@@ -8,7 +8,7 @@ const car: CarSnapshot = {
   locked: true, precond_on: false, mileage_km: null, battery_health: null,
 }
 const status = (over: Partial<Status> = {}, c: Partial<CarSnapshot> = {}): Status => ({
-  car: { ...car, ...c }, where: 'home', place_name: null, mileage_km: null, position_age_min: null, period: 'vazio', next_event: null,
+  car: { ...car, ...c }, where: 'home', place_name: null, paused_reason: null, mileage_km: null, position_age_min: null, period: 'vazio', next_event: null,
   automation: { enabled: true, offset_min: 10, battery_limit: 80 },
   override: null, last_command: null, mqtt_connected: true, psa_connected: true, updated_at: '2026-11-12T00:00:00-01:00', ...over,
 })

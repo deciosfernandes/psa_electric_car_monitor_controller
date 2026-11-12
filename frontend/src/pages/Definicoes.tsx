@@ -8,6 +8,7 @@ interface Settings {
   discord_webhook_set: boolean
   discord_info: boolean
   refresh_min: number
+  battery_capacity_kwh: number
 }
 
 const errorText = (e: unknown) => (e instanceof Error ? e.message : 'Erro inesperado')
@@ -164,6 +165,56 @@ function RefreshCard({ saved }: { saved: Settings }) {
   )
 }
 
+function CapacityCard({ saved }: { saved: Settings }) {
+  const qc = useQueryClient()
+  const [kwh, setKwh] = useState<number>(saved.battery_capacity_kwh)
+  const [justSaved, setJustSaved] = useState(false)
+  const ok = Number.isFinite(kwh) && kwh >= 10 && kwh <= 150
+  const save = useMutation({
+    mutationFn: () =>
+      apiSend<Settings>('PUT', '/api/settings', {
+        discord_info: saved.discord_info,
+        refresh_min: saved.refresh_min,
+        battery_capacity_kwh: kwh,
+      }),
+    onSuccess: (d) => {
+      qc.setQueryData(['settings'], d)
+      setJustSaved(true)
+    },
+  })
+  return (
+    <div className="card">
+      <div className="flex items-center justify-between">
+        <div className="label">Bateria</div>
+        {justSaved && <Saved />}
+      </div>
+      <div className="mt-3 flex flex-wrap items-end gap-2">
+        <label className="block text-xs font-semibold">
+          Capacidade útil da bateria (kWh)
+          <input
+            type="number"
+            min={10}
+            max={150}
+            step={0.1}
+            className="field mt-1 !w-40"
+            value={Number.isNaN(kwh) ? '' : kwh}
+            onChange={(e) => {
+              setJustSaved(false)
+              setKwh(e.target.value === '' ? NaN : Number(e.target.value))
+            }}
+          />
+        </label>
+        <button className="btn btn-primary" disabled={!ok || kwh === saved.battery_capacity_kwh || save.isPending} onClick={() => save.mutate()}>
+          Guardar
+        </button>
+      </div>
+      <div className="mt-2 text-xs text-muted">Usada para calcular kWh, custos e consumo das cargas e viagens.</div>
+      {!ok && <div className="mt-2 text-xs text-danger-ink">Indique um valor entre 10 e 150 kWh.</div>}
+      <Err message={save.isError ? errorText(save.error) : null} />
+    </div>
+  )
+}
+
 function PasswordCard() {
   const [current, setCurrent] = useState('')
   const [next, setNext] = useState('')
@@ -234,6 +285,7 @@ export default function Definicoes() {
         <>
           <DiscordCard saved={settings.data} />
           <RefreshCard saved={settings.data} />
+          <CapacityCard saved={settings.data} />
         </>
       )}
       <PlacesEditor />

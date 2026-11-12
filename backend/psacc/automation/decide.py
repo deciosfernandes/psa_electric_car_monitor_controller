@@ -19,6 +19,13 @@ _NOT_HOME = {
 }
 
 
+def not_home_reason(where: Where, place_name: str | None = None) -> str:
+    """Why the automation is paused when the car is not at Casa (pt-PT)."""
+    if where == "other":
+        return f"Fora de Casa ({place_name or 'local desconhecido'})"
+    return _NOT_HOME[where]
+
+
 @dataclass(frozen=True)
 class Decision:
     mode: Literal["charge", "defer"] | None  # None = do nothing

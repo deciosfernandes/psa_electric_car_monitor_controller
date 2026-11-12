@@ -27,7 +27,7 @@ export default function Viagens() {
                 <th className="py-1 pr-3">Data</th>
                 <th className="pr-3">Partida → Chegada</th>
                 <th className="pr-3">Distância</th>
-                <th className="pr-3">Bateria</th>
+                <th className="pr-3">% gasto</th>
                 <th className="pr-3">kWh</th>
                 <th>kWh/100 km</th>
               </tr>
@@ -39,10 +39,10 @@ export default function Viagens() {
                     {fmtDate(t.departed_at)} ≈{fmtHour(t.departed_at)}
                   </td>
                   <td className="pr-3">
-                    <PlaceBadge kind={t.from_kind} name={t.from_name} /> → <PlaceBadge kind={t.to_kind} name={t.to_name} />
+                    <PlaceBadge kind={t.from_kind} name={t.from_name} lat={t.from_lat} lon={t.from_lon} /> → <PlaceBadge kind={t.to_kind} name={t.to_name} lat={t.to_lat} lon={t.to_lon} />
                   </td>
                   <td className="pr-3">≈ {fmtNum(t.km)} km</td>
-                  <td className="pr-3">{t.soc_start != null && t.soc_end != null ? `${Math.round(t.soc_end - t.soc_start)} %` : '—'}</td>
+                  <td className="pr-3">{t.soc_start != null && t.soc_end != null ? `${Math.round(t.soc_start - t.soc_end)} %` : '—'}</td>
                   <td className="pr-3">{fmtNum(t.kwh)}</td>
                   <td>{fmtNum(t.kwh_100km)}</td>
                 </tr>

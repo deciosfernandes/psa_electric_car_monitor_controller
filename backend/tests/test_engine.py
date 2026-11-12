@@ -621,6 +621,18 @@ def test_work_charge_once_per_episode():
     assert charge_calls(gw) == [("set_charge_mode", "charge", (0, 10))] * 2
 
 
+def test_work_episode_survives_position_jitter_while_plugged():
+    add_work()
+    engine, gw, *_ = make(car=at_place(WORK, plugged=True, charging=False), apply_effect=True)
+    engine.on_status(gw.snap)
+    engine.verify_now()
+    gw.snap = at_place(OTHER, minutes=5, plugged=True, charging=False)  # fix just outside the work radius
+    engine.on_status(gw.snap)
+    gw.snap = at_place(WORK, minutes=10, plugged=True, charging=False)
+    engine.on_status(gw.snap)
+    assert len(charge_calls(gw)) == 1
+
+
 def test_work_episode_survives_restart():
     add_work()
     engine, gw, *_ = make(car=at_place(WORK, plugged=True, charging=False))

@@ -332,10 +332,11 @@ class Engine:
         return self.last_where
 
     def _work_charge_sent(self, car: CarSnapshot, where: Where) -> bool:
-        """The plug-in episode at Trabalho ends when the car is unplugged or located at another known place
-        ("unset" does not end it: deleting and re-creating Casa must not allow a second work charge)."""
+        """The plug-in episode at Trabalho ends when the car is unplugged or located at Casa. "unset" and
+        "other" do not end it: GPS jitter at the work radius edge or re-creating Casa must not allow a second
+        work charge (a plugged car does not move)."""
         episode = store.get_work_episode()
-        if episode is not None and (car.plugged is False or where in ("home", "other")):
+        if episode is not None and (car.plugged is False or where == "home"):
             store.set_work_episode(None)
             return False
         return episode is not None

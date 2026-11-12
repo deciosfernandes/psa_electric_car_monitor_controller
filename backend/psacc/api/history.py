@@ -47,6 +47,8 @@ def charges_summary(month: str | None = Query(None, pattern=r"^\d{4}-(0[1-9]|1[0
         "work_pct": work_kwh / kwh * 100 if kwh > 0 else 0.0,
         "home_pct": home_kwh / kwh * 100 if kwh > 0 else 0.0,
         "avg_home_eur_kwh": sum(c.cost_eur for c in priced) / priced_kwh if priced_kwh > 0 else None,
+        "unpriced": sum(1 for c in rows if c.cost_eur is None),  # counted as 0 EUR in cost_eur
+        "partial": sum(1 for c in rows if c.partial),
     }
 
 

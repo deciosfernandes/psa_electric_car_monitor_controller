@@ -58,6 +58,7 @@ export interface Status {
   car: CarSnapshot | null // null while the PSA account is not configured or awaiting first poll
   where: Where
   place_name: string | null
+  paused_reason: string | null // why the automation is idle (null at Casa)
   mileage_km: number | null
   position_age_min: number | null
   period: PeriodType
@@ -154,7 +155,7 @@ export interface ChargeSession {
   id: number
   started_at: string
   ended_at: string | null
-  place_kind: 'home' | 'work' | 'other'
+  place_kind: Where
   place_name: string | null
   soc_start: number
   soc_end: number | null
@@ -173,6 +174,8 @@ export interface ChargeSample {
 export interface ChargeSummary {
   kwh: number
   cost_eur: number // unknown-cost sessions count as 0
+  unpriced: number // sessions of the month without a known cost
+  partial: number // sessions seen only in part
   work_pct: number
   home_pct: number
   avg_home_eur_kwh: number | null
@@ -182,9 +185,9 @@ export interface Trip {
   id: number
   departed_at: string
   arrived_at: string
-  from_kind: 'home' | 'work' | 'other'
+  from_kind: Where
   from_name: string | null
-  to_kind: 'home' | 'work' | 'other'
+  to_kind: Where
   to_name: string | null
   from_lat: number | null
   from_lon: number | null

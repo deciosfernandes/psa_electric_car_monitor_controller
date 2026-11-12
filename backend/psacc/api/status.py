@@ -3,6 +3,7 @@ from datetime import UTC, datetime, timedelta
 from fastapi import APIRouter, Query, Request
 
 from .. import store
+from ..automation.decide import not_home_reason
 from ..tariff.schedule import period_at, planned_events
 from . import to_json
 
@@ -22,11 +23,14 @@ def status(request: Request) -> dict:
     pos_at = (car.position_at if car is not None else None) or (fix.at if fix is not None else None)
     if pos_at is not None and pos_at.tzinfo is None:
         pos_at = pos_at.replace(tzinfo=UTC)
+    where = (engine.last_where if engine is not None else None) or "unknown"
+    place_name = engine.last_place.name if engine is not None and engine.last_place else None
     return to_json(
         {
             "car": car,
-            "where": (engine.last_where if engine is not None else None) or "unknown",
-            "place_name": engine.last_place.name if engine is not None and engine.last_place else None,
+            "where": where,
+            "place_name": place_name,
+            "paused_reason": None if where == "home" else not_home_reason(where, place_name),
             "mileage_km": car.mileage_km if car is not None else None,
             "position_age_min": max(0, int((now - pos_at).total_seconds() // 60)) if pos_at is not None else None,
             "period": period_at(tariff, now),

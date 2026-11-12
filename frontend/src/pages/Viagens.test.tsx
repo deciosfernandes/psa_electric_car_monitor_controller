@@ -29,7 +29,7 @@ describe('Viagens', () => {
     )
     expect(await screen.findByText('Lagoa')).toBeTruthy()
     expect(screen.getByText('≈ 14,2 km')).toBeTruthy()
-    expect(screen.getByText('-4 %')).toBeTruthy()
+    expect(screen.getByText('4 %')).toBeTruthy()
     expect(screen.getByText('14,3')).toBeTruthy()
     expect(screen.getByText(/aproximadas/)).toBeTruthy()
     expect(screen.getByText('marcadores 0')).toBeTruthy()

@@ -15,7 +15,7 @@ const car = (over: Partial<CarSnapshot> = {}): CarSnapshot => ({
   mileage_km: 37256.4, battery_health: 95, ...over,
 })
 const status = (over: Partial<Status> = {}): Status => ({
-  car: car(), where: 'home', place_name: 'Casa', mileage_km: 37256.4, position_age_min: 3, period: 'vazio', next_event: null,
+  car: car(), where: 'home', place_name: 'Casa', paused_reason: null, mileage_km: 37256.4, position_age_min: 3, period: 'vazio', next_event: null,
   automation: { enabled: true, offset_min: 10, battery_limit: 80 }, override: null, last_command: null,
   mqtt_connected: true, psa_connected: true, updated_at: '2026-11-12T10:00:00Z', ...over,
 })
@@ -37,6 +37,16 @@ describe('Painel cards', () => {
     expect(url).toBe('/api/automation')
     expect(init?.method).toBe('PUT')
     expect(JSON.parse(init?.body as string)).toEqual({ enabled: false, offset_min: 10, battery_limit: 80 })
+  })
+
+  it.each([
+    ['unset', 'Defina o local Casa'],
+    ['unknown', 'Posição do carro desconhecida'],
+  ] as const)('shows "Em pausa" instead of the next event when where=%s', (where, reason) => {
+    const next_event = { at: '2026-11-12T23:00:00Z', action: 'charge' } as Status['next_event']
+    wrap(<AutomationCard status={status({ where, paused_reason: reason, next_event })} run={vi.fn()} pending={null} />)
+    expect(screen.getByText(`Em pausa · ${reason}`)).toBeTruthy()
+    expect(screen.queryByText(/Próximo:/)).toBeNull()
   })
 
   it('shows "só em Casa" and the deferred hint only when away with a defer command', () => {

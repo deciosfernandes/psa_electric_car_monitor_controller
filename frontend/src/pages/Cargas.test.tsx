@@ -18,7 +18,7 @@ const charges = [
   { ...base, id: 2, started_at: now, place_kind: 'other', place_name: 'Lagoa', kwh: 22.8, cost_eur: null },
   { ...base, id: 3, started_at: now, place_kind: 'work', place_name: 'Trabalho', kwh: 15.2, cost_eur: 0, partial: true },
 ]
-const summary = { kwh: 61.4, cost_eur: 3.51, work_pct: 25, home_pct: 38, avg_home_eur_kwh: 0.15 }
+const summary = { kwh: 61.4, cost_eur: 3.51, work_pct: 25, home_pct: 38, avg_home_eur_kwh: 0.15, unpriced: 1, partial: 1 }
 
 function setup() {
   const f = vi.fn(async (url: string, init?: RequestInit) => {
@@ -41,6 +41,17 @@ function setup() {
 }
 
 describe('Cargas', () => {
+  it('renders a badge for unknown and unset places', async () => {
+    charges.push(
+      { ...base, id: 4, started_at: now, place_kind: 'unknown', place_name: '', kwh: 10, cost_eur: null },
+      { ...base, id: 5, started_at: now, place_kind: 'unset', place_name: '', kwh: 10, cost_eur: null },
+    )
+    setup()
+    expect(await screen.findByText('Desconhecido')).toBeTruthy()
+    expect(screen.getByText('Sem local')).toBeTruthy()
+    charges.length = 3
+  })
+
   it('renders rows, EUR formatting, definir preço and ≈ for partial', async () => {
     setup()
     expect(await screen.findByText('3,51 €')).toBeTruthy()

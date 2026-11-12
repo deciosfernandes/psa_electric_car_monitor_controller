@@ -5,8 +5,6 @@ import { ChargeCurve } from '../components/ChargeCurve'
 import { PlaceBadge } from '../components/PlaceBadge'
 import { fmtDate, fmtEur, fmtHour, fmtNum, fmtPct } from '../format'
 
-const monthFmt = new Intl.DateTimeFormat('en-CA', { timeZone: 'Atlantic/Azores', year: 'numeric', month: '2-digit' })
-const monthOf = (d: Date | string) => monthFmt.format(new Date(d))
 const MONTH_NAME = new Intl.DateTimeFormat('pt-PT', { timeZone: 'Atlantic/Azores', month: 'long' })
 
 function PriceEditor({ id, onDone }: { id: number; onDone: () => void }) {
@@ -61,9 +59,8 @@ export default function Cargas() {
   if (list.isError || summary.isError) return <div className="card text-danger-ink">Não foi possível obter as cargas.</div>
   const rows = list.data ?? []
   const s = summary.data
-  const thisMonth = monthOf(today)
   // The summary counts unknown-cost sessions as 0 EUR: the totals are exact only when every session of the month is complete and priced.
-  const inexact = rows.some((c) => monthOf(c.started_at) === thisMonth && (c.partial || c.cost_eur === null))
+  const inexact = s != null && (s.unpriced > 0 || s.partial > 0)
   const approx = inexact ? '≈ ' : ''
 
   return (

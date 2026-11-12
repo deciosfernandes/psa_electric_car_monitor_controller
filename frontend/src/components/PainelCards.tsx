@@ -128,7 +128,10 @@ export function AutomationCard({
             {automation.enabled ? 'Ligada' : 'Desligada'} · só em Casa
             {tariff && <span className="text-xs font-normal text-muted"> · {tariff.name}</span>}
           </div>
-          {automation.enabled && (
+          {automation.enabled && where !== 'home' && (
+            <div className="mt-2 text-xs font-semibold">Em pausa · {status.paused_reason ?? 'fora de Casa'}</div>
+          )}
+          {automation.enabled && where === 'home' && (
             <div className="mt-2 text-xs">
               Próximo: {next_event ? <b>{nextEventText(next_event.at, next_event.action)}</b> : <span className="text-muted">sem eventos previstos</span>}
             </div>
