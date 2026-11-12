@@ -81,3 +81,15 @@ def test_otp_path_follows_data_dir(tmp_path):
     assert otp.otp_path() == tmp_path / "otp.bin"
     otp.save_otp({"x": 1})
     assert otp.load_otp() == {"x": 1}
+
+
+def test_psa_corrupt_file_is_none(tmp_path):
+    (tmp_path / "psa.json").write_text("{trunc", encoding="utf-8")
+    assert store.get_psa() is None
+
+
+def test_psa_overwrite_leaves_no_tmp(tmp_path):
+    store.save_psa({"a": 1})
+    store.save_psa({"a": 2})
+    assert store.get_psa() == {"a": 2}
+    assert [p.name for p in tmp_path.iterdir() if p.name.startswith("psa")] == ["psa.json"]

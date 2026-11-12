@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import secrets
 from datetime import datetime, timezone
@@ -10,6 +11,8 @@ from sqlmodel import Field as SQLField
 from sqlmodel import Session, SQLModel, create_engine, select
 
 from . import settings
+
+logger = logging.getLogger(__name__)
 
 
 class AppConfig(BaseModel):
@@ -123,12 +126,18 @@ def get_psa() -> dict | None:
         return json.loads(_psa_path().read_text(encoding="utf-8"))
     except FileNotFoundError:
         return None
+    except json.JSONDecodeError:
+        logger.warning("psa.json is corrupt, ignoring it")
+        return None
 
 
 def save_psa(d: dict) -> None:
     path = _psa_path()
-    path.write_text(json.dumps(d), encoding="utf-8")
-    os.chmod(path, 0o600)
+    tmp = path.with_name(path.name + ".tmp")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        json.dump(d, f)
+    os.replace(tmp, path)
 
 
 def log_activity(kind: Literal["info", "action", "error"], message: str, at: datetime | None = None) -> None:
