@@ -3,6 +3,7 @@ import { BrowserRouter, Route, Routes } from 'react-router'
 import { Shell } from './layout/Shell'
 import ComingSoon from './pages/ComingSoon'
 import Login from './pages/Login'
+import Painel from './pages/Painel'
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } } })
 
@@ -15,7 +16,7 @@ export default function App() {
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route element={<Shell />}>
-            <Route index element={<ComingSoon title="Painel" message={WIP} />} />
+            <Route index element={<Painel />} />
             <Route path="automacao" element={<ComingSoon title="Automação" message={WIP} />} />
             <Route path="cargas" element={<ComingSoon title="Cargas" />} />
             <Route path="viagens" element={<ComingSoon title="Viagens" />} />

@@ -20,7 +20,7 @@ export interface CarSnapshot {
   precond_on: boolean | null
 }
 
-export interface Event {
+export interface ScheduleEvent {
   at: string
   action: Action
 }
@@ -42,7 +42,7 @@ export interface LastCommand {
 export interface Status {
   car: CarSnapshot | null // null while the PSA account is not configured
   period: PeriodType
-  next_event: Event | null
+  next_event: ScheduleEvent | null
   automation: { enabled: boolean; offset_min: number; battery_limit: number }
   override: Override | null
   last_command: LastCommand | null
@@ -78,6 +78,12 @@ export interface Activity {
   at: string
   kind: 'info' | 'action' | 'error'
   message: string
+}
+
+export interface BatterySample {
+  at: string
+  soc: number
+  charging: boolean
 }
 
 export interface AuthState {

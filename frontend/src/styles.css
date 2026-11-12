@@ -8,6 +8,7 @@
   --muted: #64748b;
   --border: #e5e7eb;
   --primary: #2563eb;
+  --primary-fill: #2563eb; /* filled buttons: white text needs >= 4.5:1 in both themes */
   --primary-soft: #eff6ff;
   --primary-ink: #1d4ed8;
   --vazio: #22c55e;
@@ -55,6 +56,10 @@
   --color-vazio: var(--vazio);
   --color-cheias: var(--cheias);
   --color-ponta: var(--ponta);
+  --color-ok-soft: var(--ok-soft);
+  --color-ok-ink: var(--ok-ink);
+  --color-warn-soft: var(--warn-soft);
+  --color-warn-ink: var(--warn-ink);
   --color-danger-soft: var(--danger-soft);
   --color-danger-ink: var(--danger-ink);
   --font-sans: Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -114,7 +119,7 @@ body {
   cursor: default;
 }
 .btn-primary {
-  background: var(--primary);
+  background: var(--primary-fill);
   color: #fff;
 }
 .field {
@@ -125,4 +130,26 @@ body {
   background: var(--bg);
   color: var(--text);
   font: inherit;
+}
+
+.spinner {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  margin-right: 6px;
+  vertical-align: -1px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation-duration: 2s;
+  }
 }
