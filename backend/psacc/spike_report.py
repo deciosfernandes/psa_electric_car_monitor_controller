@@ -94,6 +94,21 @@ def timezone_verdict(local: tuple[str, str] | None, utc: tuple[str, str] | None,
     return "inconclusive", f"neither probe started (UTC probe: {utc[1]})"
 
 
+NOT_PLUGGED = "carro não está ligado à tomada"
+
+
+def plug_precheck(snap, window_start: datetime) -> tuple[bool, str | None]:
+    """(True, None) only for a fresh REST read (electric energy block at least `window_start`) with
+    plugged=True. MQTT `cable_detected` is never used: a real e-208 reported 0 while plugged in."""
+    if snap is None:
+        return False, "no REST read: plug state unknown"
+    if snap.energy_at is None or snap.energy_at < window_start:
+        return False, "no fresh REST read: plug state unknown"
+    if snap.plugged is None:
+        return False, "REST read without plugged: plug state unknown"
+    return (True, None) if snap.plugged else (False, NOT_PLUGGED)
+
+
 class WakeupBudget:
     """Sliding-window count of the wakeups the script sends (RemoteClient.wakeup allows 6 per 20 min)."""
 

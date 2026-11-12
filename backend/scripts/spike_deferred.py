@@ -22,11 +22,13 @@ from psacc.psa.RemoteClient import MQTT_EVENT_TOPIC  # noqa: E402
 from psacc.psa.constants import BRAND  # noqa: E402
 from psacc.settings import TZ  # noqa: E402
 from psacc.spike_report import (  # noqa: E402
+    NOT_PLUGGED,
     PROBE_WINDOW,
     Observation,
     WakeupBudget,
     find_keys,
     observation_from,
+    plug_precheck,
     probe_outcome,
     probe_target,
     sanitize,
@@ -75,9 +77,23 @@ def wait(seconds: int) -> None:
     print(" " * 20, end="\r")
 
 
+def failure(exc: Exception) -> str:
+    return f"{type(exc).__name__}: {exc}"[:500]
+
+
+def mqtt_charging_state() -> dict | None:
+    """The last MQTT charging_state, recorded next to REST `plugged` to learn what cable_detected means."""
+    return last_mqtt["charging_state"]
+
+
 def raw_read(gw: PsaGateway, label: str) -> dict:
-    car = gw.client.vehicles_list.get_car_by_vin(gw.vin)
-    raw = gw.client.rest.get(f"/user/vehicles/{car.vehicle_id}/status")
+    """Never raises: a failed read is recorded in the returned entry."""
+    try:
+        car = gw.client.vehicles_list.get_car_by_vin(gw.vin)
+        raw = gw.client.rest.get(f"/user/vehicles/{car.vehicle_id}/status")
+    except Exception as exc:
+        print(f"[{label}] raw read failed: {failure(exc)}")
+        return {"label": label, "error": failure(exc)}
     entry = {"label": label, "local_time": datetime.now().astimezone().isoformat(timespec="seconds"),
              "charging_fields": find_keys(raw, {"nextDelayedTime", "schedule", "chargingMode", "status", "plugged"}),
              "raw_status": raw}
@@ -118,7 +134,7 @@ def observe(gw: PsaGateway, wake: bool, reserve: int = 0) -> tuple[Observation, 
     try:
         snap = gw.snapshot()
     except Exception as exc:  # transient PSA/network failure: no evidence, keep going
-        entry["error"] = type(exc).__name__
+        entry["error"] = failure(exc)
         print(f"  {entry['azores_time']} Azores: read failed ({entry['error']})")
         return Observation(window_start=window_start, at=None, charging=None), entry
     obs = observation_from(snap, window_start)
@@ -130,11 +146,22 @@ def observe(gw: PsaGateway, wake: bool, reserve: int = 0) -> tuple[Observation, 
     return obs, entry
 
 
-def show(gw: PsaGateway, label: str) -> None:
-    wakeup(gw)
-    snap = gw.snapshot()
+def show(gw: PsaGateway, label: str, report: dict, wake: bool = True) -> None:
+    """Wake (optionally), read and print; never raises: the read or its failure is added to report["reads"]."""
+    if wake:
+        wakeup(gw)
+    try:
+        snap = gw.snapshot()
+    except Exception as exc:
+        print(f"[{label}] read failed: {failure(exc)}")
+        report["reads"].append({"label": label, "error": failure(exc)})
+        return
     print(f"[{label}] soc={snap.soc} plugged={snap.plugged} charging={snap.charging} "
           f"status={snap.charge_status} next_delayed_time={snap.next_delayed_time}")
+    report["reads"].append({"label": label, "soc": snap.soc, "plugged": snap.plugged, "charging": snap.charging,
+                            "status": snap.charge_status, "next_delayed_time": snap.next_delayed_time,
+                            "energy_at": snap.energy_at.isoformat() if snap.energy_at else None,
+                            "mqtt_charging_state": mqtt_charging_state()})
 
 
 def login() -> None:
@@ -161,21 +188,24 @@ def otp() -> None:
 
 
 def run(gw: PsaGateway, report: dict) -> None:
-    show(gw, "start")
+    # RemoteClient.start() has just sent its keepalive wakeup: a second identical wakeup seconds later is
+    # avoidable (and a suspect for PSA's "502 duplicate.message.key"), so the first read only waits for it
+    wait(SETTLE_S)
+    show(gw, "start", report, wake=False)
     input("Plug the car in and confirm it is charging, then press Enter. ")
-    show(gw, "charging baseline")
+    show(gw, "charging baseline", report)
     report["reads"].append(raw_read(gw, "before defer"))
 
     print(f"Sending defer, program hour {PROGRAM_HOUR[0]:02d}:{PROGRAM_HOUR[1]:02d}")
     print("  accepted:", gw.set_charge_mode("defer", PROGRAM_HOUR))
     wait(WAIT_S)
-    show(gw, "after defer (expect charging False)")
+    show(gw, "after defer (expect charging False)", report)
     report["reads"].append(raw_read(gw, "after defer"))
 
     print("Sending charge (immediate)")
     print("  accepted:", gw.set_charge_mode("charge", PROGRAM_HOUR))
     wait(WAIT_S)
-    show(gw, "after charge (expect charging True)")
+    show(gw, "after charge (expect charging True)", report)
     report["reads"].append(raw_read(gw, "after charge"))
 
     report["program_hour_timezone"] = tz_test = timezone_test(gw)
@@ -207,6 +237,34 @@ def confirm_not_charging(gw: PsaGateway, test: dict) -> bool:
         if obs.fresh:
             return accepted and obs.charging is False
         wait(POLL_S)
+    return False
+
+
+def plug_check(gw: PsaGateway, test: dict) -> bool:
+    """The timezone probes need the car plugged in, proven by a fresh REST read (MQTT cable_detected is not
+    trusted, only recorded). Otherwise the verdict is set to "inconclusive" and False is returned."""
+    started = datetime.now(UTC)
+    woken = wakeup(gw)
+    window_start = started - WOKEN_TOLERANCE if woken else datetime.now(UTC) - PLAIN_MAX_AGE
+    entry = {"azores_time": datetime.now(TZ).strftime("%H:%M:%S"), "woken": woken,
+             "mqtt_charging_state": mqtt_charging_state()}
+    snap = None
+    try:
+        snap = gw.snapshot()
+        entry.update(plugged=snap.plugged, charging=snap.charging, status=snap.charge_status,
+                     energy_at=snap.energy_at.isoformat() if snap.energy_at else None)
+    except Exception as exc:
+        entry["error"] = failure(exc)
+    test["plug_check"] = entry
+    ok, reason = plug_precheck(snap, window_start)
+    if ok:
+        return True
+    test["verdict"], test["reason"] = "inconclusive", reason
+    if reason == NOT_PLUGGED:
+        print("\nO carro não está ligado à tomada. Ligue o carro à tomada e volte a correr o spike.")
+    else:
+        print(f"\nNão foi possível confirmar que o carro está ligado à tomada ({reason}). "
+              "Ligue o carro à tomada e volte a correr o spike.")
     return False
 
 
@@ -253,6 +311,8 @@ def timezone_test(gw: PsaGateway) -> dict:
     local = utc = None
     baseline_ok = True
     if offset_h != 0:
+        if not plug_check(gw, test):
+            return test
         print("\nTimezone test: the car stops charging now and must start again at the programmed time.")
         baseline_ok = confirm_not_charging(gw, test)
         if baseline_ok:
