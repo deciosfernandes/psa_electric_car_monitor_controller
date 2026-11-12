@@ -65,3 +65,42 @@ def test_load_gateway_none_without_config():
     assert setup_flow.load_gateway() is None
     store.save_psa({"refresh_token": "r"})  # psa but no vin
     assert setup_flow.load_gateway() is None
+
+
+def test_request_sms_on_stored_client_refreshes_access_token_first(monkeypatch):
+    """R8: a client rebuilt from the stored dict has a refresh token but no access token (no session)."""
+    from psacc.psa.oauth import OpenIdCredentialManager
+
+    store.save_psa({"refresh_token": "stored-refresh", "client_id": "cid", "client_secret": "cs",
+                    "remote_refresh_token": None, "customer_id": "AP-1", "realm": "clientsB2CPeugeot",
+                    "country_code": "PT", "brand": None, "vehicles": []})
+    refreshes, posts = [], []
+
+    def fake_refresh(self):  # stands in for the token endpoint: never contact PSA
+        refreshes.append(self.refresh_token)
+        self._access_token = "fresh-access"
+
+    def fake_post(self, url, **kwargs):
+        posts.append((url, self.headers.get("Authorization")))
+        return MagicMock(ok=True, status_code=202)
+
+    monkeypatch.setattr(OpenIdCredentialManager, "_refresh_token", fake_refresh)
+    monkeypatch.setattr("requests.Session.post", fake_post)
+    setup_flow.request_sms()
+    assert refreshes == ["stored-refresh"]
+    assert len(posts) == 1 and "smsCode" in posts[0][0] and posts[0][1] == "Bearer fresh-access"
+
+
+def test_request_sms_without_access_token_and_failed_refresh_raises(monkeypatch):
+    from psacc.psa.oauth import OpenIdCredentialManager
+    from psacc.psa.RemoteClient import RemoteException
+
+    store.save_psa({"refresh_token": "stored-refresh", "client_id": "cid", "client_secret": "cs",
+                    "remote_refresh_token": None, "customer_id": "AP-1", "realm": "clientsB2CPeugeot",
+                    "country_code": "PT", "brand": None, "vehicles": []})
+    monkeypatch.setattr(OpenIdCredentialManager, "refresh_token_now", lambda self: False)
+    post = MagicMock()
+    monkeypatch.setattr("requests.Session.post", post)
+    with pytest.raises(RemoteException, match="no PSA access token"):
+        setup_flow.request_sms()
+    post.assert_not_called()

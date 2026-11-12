@@ -11,7 +11,7 @@ from typing import Optional
 from oauth2_client.credentials_manager import CredentialManager, OAuthError, ServiceInformation
 from requests import Response, RequestException
 
-from psacc.utils import rate_limit, TIMEOUT_IN_S
+from psacc.utils import RateLimitException, rate_limit, TIMEOUT_IN_S
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +71,17 @@ class OpenIdCredentialManager(CredentialManager):
     @property
     def access_token(self):
         return self._access_token
+
+    def ensure_access_token(self) -> bool:
+        """A client rebuilt from stored settings has a refresh token but no access token (and no session, so
+        ``post``/``get`` raise ``OAuthError no_token``): refresh once before its first bearer request."""
+        if self.access_token:
+            return True
+        try:
+            return self.refresh_token_now()
+        except RateLimitException:
+            logger.error("Can't get an access token: token refresh rate limited")
+            return False
 
     @rate_limit(6, 1800)
     def refresh_token_now(self):

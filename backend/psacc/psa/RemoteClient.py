@@ -269,6 +269,8 @@ class RemoteClient:
                 return False
 
     def get_sms_otp_code(self):
+        if not self.manager.ensure_access_token():
+            raise RemoteException("SMS request failed: no PSA access token (log in again)")
         res = self.manager.post(
             "https://api.groupe-psa.com/applications/cvs/v4/mobile/smsCode?client_id=" + self.account_info.client_id,
             headers=self.headers, timeout=TIMEOUT_IN_S)
