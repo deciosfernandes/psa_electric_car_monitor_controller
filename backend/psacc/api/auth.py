@@ -7,10 +7,10 @@ from .. import store
 from ..auth import (
     MAX_PASSWORD_LEN,
     MIN_PASSWORD_LEN,
-    SESSION_KEY,
     LoginRateLimiter,
     hash_password,
     is_logged_in,
+    start_session,
     verify_password,
 )
 
@@ -43,7 +43,7 @@ def setup_password(body: PasswordIn, request: Request) -> dict:
             raise HTTPException(409, "A palavra-passe já está definida")
         cfg.password_hash = hash_password(body.password)
         store.save_config(cfg)
-    request.session[SESSION_KEY] = True
+    start_session(request, cfg.session_epoch)
     return {"ok": True}
 
 
@@ -62,8 +62,7 @@ def login(body: PasswordIn, request: Request) -> dict:
         limiter.release(ok)
     if not ok:
         raise HTTPException(401, "Palavra-passe incorreta")
-    request.session.clear()
-    request.session[SESSION_KEY] = True
+    start_session(request, store.get_config().session_epoch)
     return {"ok": True}
 
 
@@ -87,7 +86,9 @@ def change_password(body: PasswordChangeIn, request: Request) -> dict:
     if not ok:
         raise HTTPException(401, "Palavra-passe atual incorreta")
     cfg.password_hash = hash_password(body.new)
+    cfg.session_epoch += 1  # revokes every other session
     store.save_config(cfg)
+    start_session(request, cfg.session_epoch)
     return {"ok": True}
 
 

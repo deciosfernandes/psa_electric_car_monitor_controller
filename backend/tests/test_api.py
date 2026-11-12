@@ -39,7 +39,7 @@ def logged(client):
 
 
 def test_health_is_public(client):
-    assert client.get("/api/health").json() == {"ok": True}
+    assert client.get("/api/health").json() == {"ok": True, "fake": False}
 
 
 def test_requires_login(client):
@@ -128,6 +128,21 @@ def test_change_password(logged):
     logged.post("/api/auth/logout")
     assert logged.post("/api/auth/login", json={"password": PASSWORD}).status_code == 401
     assert logged.post("/api/auth/login", json={"password": "novasenha1"}).status_code == 200
+
+
+def test_password_change_revokes_other_sessions(logged):
+    other = TestClient(logged.app, headers=logged.headers)
+    assert other.post("/api/auth/login", json={"password": PASSWORD}).status_code == 200
+    assert other.get("/api/status").status_code == 200
+    assert logged.post("/api/auth/password", json={"current": PASSWORD, "new": "novasenha1"}).status_code == 200
+    assert other.get("/api/status").status_code == 401
+    assert logged.get("/api/status").status_code == 200
+
+
+def test_health_reports_fake_mode(client, monkeypatch):
+    assert client.get("/api/health").json()["fake"] is False
+    monkeypatch.setenv("PSACC_FAKE", "1")
+    assert client.get("/api/health").json()["fake"] is True
 
 
 def test_change_password_requires_login_and_is_rate_limited(client):
@@ -347,4 +362,4 @@ def test_spa_fallback_does_not_shadow_api(tmp_path, monkeypatch):
         assert "spa" in c.get("/").text
         assert "spa" in c.get("/automacao").text
         assert c.get("/api/nao-existe").status_code == 404
-        assert c.get("/api/health").json() == {"ok": True}
+        assert c.get("/api/health").json() == {"ok": True, "fake": False}

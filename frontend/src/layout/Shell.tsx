@@ -17,6 +17,16 @@ function NoCarNotice() {
   )
 }
 
+function FakeBanner() {
+  const { data } = useQuery({ queryKey: ['health'], queryFn: () => apiGet<{ fake: boolean }>('/api/health') })
+  if (!data?.fake) return null
+  return (
+    <div role="status" className="mb-4 rounded-[12px] bg-warn-soft px-4 py-3 font-semibold text-warn-ink">
+      Modo de demonstração — os comandos não chegam ao carro
+    </div>
+  )
+}
+
 export function Shell() {
   const auth = useQuery({ queryKey: ['auth'], queryFn: () => apiGet<AuthState>('/api/auth/state') })
   if (auth.isPending) return null
@@ -25,6 +35,7 @@ export function Shell() {
     <div className="flex min-h-full">
       <Sidebar />
       <main className="min-w-0 flex-1 p-6">
+        <FakeBanner />
         <NoCarNotice />
         <Outlet />
       </main>

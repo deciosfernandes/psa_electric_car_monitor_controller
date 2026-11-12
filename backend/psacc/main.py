@@ -110,7 +110,7 @@ def create_app(db_url: str | None = None, gateway_factory: GatewayFactory | None
 
     @app.get("/api/health")
     def health() -> dict:
-        return {"ok": True}
+        return {"ok": True, "fake": os.environ.get("PSACC_FAKE") == "1"}
 
     app.include_router(auth_api.router)
     for module in (status_api, automation_api, control_api, setup_api):

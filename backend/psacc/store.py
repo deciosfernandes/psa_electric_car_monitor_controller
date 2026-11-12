@@ -28,6 +28,7 @@ class AppConfig(BaseModel):
     password_hash: str | None = None
     session_secret: str = Field(default_factory=lambda: secrets.token_hex(32))
     vin: str | None = None
+    session_epoch: int = 0  # bumped on password change: sessions issued before it stop being valid
 
 
 class Activity(BaseModel):

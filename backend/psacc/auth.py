@@ -10,11 +10,14 @@ from typing import Callable
 
 from fastapi import HTTPException, Request
 
+from . import store
+
 MIN_PASSWORD_LEN = 8
 MAX_PASSWORD_LEN = 1024
 MAX_FAILURES = 5
 FAILURE_WINDOW_S = 5 * 60
 SESSION_KEY = "auth"
+EPOCH_KEY = "epoch"
 
 # scrypt cost: 2**14 * 8 * 128 B = 16 MiB of memory per hash
 _N, _R, _P = 2**14, 8, 1
@@ -78,7 +81,15 @@ class LoginRateLimiter:
 
 
 def is_logged_in(request: Request) -> bool:
-    return request.session.get(SESSION_KEY) is True
+    return (
+        request.session.get(SESSION_KEY) is True and request.session.get(EPOCH_KEY) == store.get_config().session_epoch
+    )
+
+
+def start_session(request: Request, epoch: int) -> None:
+    request.session.clear()
+    request.session[SESSION_KEY] = True
+    request.session[EPOCH_KEY] = epoch
 
 
 def require_login(request: Request) -> None:
