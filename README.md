@@ -1,28 +1,50 @@
-# psacc
+# PSA Electric Car Monitor & Controller
 
-Aplicação pessoal (um só utilizador) para controlar um Peugeot e-208 através da API ligada da PSA/Stellantis
-e automatizar o carregamento de acordo com a tarifa EDA (tri-horário semanal, Açores).
+Aplicação web pessoal para acompanhar e controlar um carro elétrico do grupo PSA/Stellantis (testada com um
+Peugeot e-208) e **carregar automaticamente apenas nas horas de vazio** da tarifa da EDA — Electricidade dos
+Açores (tri-horária, ciclo semanal).
 
-- **Automação**: inicia o carregamento no início do vazio (por omissão 10 min depois, ex.: `00h10`) e adia-o
-  antes do fim do vazio (ex.: `06h50`), respeitando o limite de bateria (por omissão 80 %).
-- **Painel**: estado da bateria, autonomia, carregamento, preços EDA por período, registo de atividade.
-- **Controlo**: "Carregar agora" (substitui a automação até ao limite de bateria ou até desligar o carro),
-  pré-condicionamento, etc.
-- **Alertas** opcionais por webhook do Discord (falha de comando, falha de autenticação PSA, MQTT em baixo).
+> Baseado no projeto [**psa_car_controller**](https://github.com/flobz/psa_car_controller) de
+> [**flobz**](https://github.com/flobz), autor original. Toda a integração com a PSA (login OAuth, código OTP,
+> comandos remotos por MQTT) parte do trabalho de engenharia inversa desse projeto. Esta versão é uma reescrita
+> para uso pessoal, com nova interface, nova arquitetura e automação por tarifa. Obrigado ao autor e a todos os
+> contribuidores do projeto original.
 
-Cargas, Viagens e Consumo mostram "Em breve".
+## O que faz
 
-> **Obrigatório antes de confiar na automação:** execute uma vez o script de diagnóstico
-> `backend/scripts/spike_deferred.py` (ver [Script de diagnóstico](#script-de-diagnóstico-spike)). Ele confirma
-> que o adiamento interrompe a carga e em que fuso horário o carro lê a hora programada; até lá a automação
-> pode iniciar a carga à hora errada.
+- **Painel** — bateria, autonomia, estado de carga, faixa da tarifa de hoje (vazio / cheias / ponta) com o
+  próximo evento automático, gráfico da bateria nas últimas 24 h e registo de atividade.
+- **Automação de carga** — usa o modo de carga diferida do carro:
+  - desliga o diferido no início do vazio (+ desfasamento, por omissão 10 min → `00h10`);
+  - liga o diferido antes do fim do vazio (− desfasamento → `06h50`);
+  - respeita um limite de bateria (por omissão 80 %);
+  - junta janelas de vazio seguidas (ex.: sábado 23h00 → segunda 07h00) sem comandos à meia-noite;
+  - confirma cada comando, volta a tentar e avisa se falhar.
+- **Tarifa editável** — predefinição "EDA tri-horário semanal" (verão junho–outubro, inverno novembro–maio),
+  grelha semanal em blocos de 15 min e preços por período com data de entrada em vigor.
+- **Controlo** — "Carregar agora" (substitui a automação até ao limite ou até desligar o cabo), climatização,
+  fechaduras, buzina, luzes e acordar o carro.
+- **Alertas no Discord** — falha de comando, sessão PSA expirada, ligação MQTT em baixo; opcionalmente início
+  e fim de carga.
+- **Interface em português**, tema claro e escuro, horas no formato 24 h, fuso `Atlantic/Azores`.
 
-> **Segurança:** a aplicação não deve ser exposta à Internet. Mantenha-a na rede local (LAN); tem apenas uma
-> palavra-passe única e controla um veículo real.
+Cargas, Viagens e Consumo aparecem como "Em breve".
+
+## Avisos importantes
+
+- **Use apenas na rede local (LAN).** A aplicação controla um carro real (incluindo destrancar) e é protegida
+  só por uma palavra-passe. Não a exponha à Internet.
+- **Execute o script de diagnóstico antes de confiar na automação** (ver abaixo). Só assim se confirma que o
+  modo diferido interrompe a carga e em que fuso o carro lê a hora programada.
+- A API da PSA não é oficial para este uso e pode mudar sem aviso.
 
 ## Instalação (Docker)
 
+Requisitos: Docker com Docker Compose.
+
 ```bash
+git clone https://github.com/deciosfernandes/psa_electric_car_monitor_controller.git
+cd psa_electric_car_monitor_controller
 docker compose up -d --build
 ```
 
@@ -30,17 +52,21 @@ Abra `http://<servidor>:5000`.
 
 ### Primeira utilização
 
-1. Defina a palavra-passe (primeiro acesso).
-2. **Definições** → ligar a conta PSA (e-mail e palavra-passe da conta Peugeot).
-3. Introduza o código recebido por SMS e o PIN da aplicação.
-4. Em **Automação**, defina os preços EDA (o preset "EDA tri-horário semanal" pode ser editado) e confirme o
-   desfasamento (10 min), o limite de bateria (80 %) e que a automação está ligada.
-5. Execute o script de diagnóstico (abaixo) uma vez, antes de confiar na automação.
+1. Defina a palavra-passe da aplicação (primeiro acesso).
+2. **Definições → Conta PSA**: escolha a aplicação (MyPeugeot, MyCitroën, …), o país e as credenciais da
+   conta. Se o login automático falhar, a aplicação mostra um link para concluir o login manualmente e colar
+   o código.
+3. Peça o código por SMS e introduza-o juntamente com o PIN da aplicação móvel.
+4. **Automação**: confirme o desfasamento (10 min), o limite de bateria (80 %), os horários da tarifa e
+   preencha os preços de vazio, cheias e ponta.
+5. **Definições → Discord** (opcional): cole o URL do webhook e use "Enviar teste".
+6. Execute o script de diagnóstico (abaixo).
 
-### Onde ficam os dados
+### Dados e cópias de segurança
 
-Tudo em `./data` no anfitrião (montado em `/data` no contentor): base de dados, configuração e credenciais.
-Faça cópias de segurança desta pasta. Fuso horário: `Atlantic/Azores`.
+Tudo fica em `./data` (montado em `/data` no contentor): base de dados, configuração, tokens da PSA, código
+OTP e certificados. A pasta é criada e ajustada automaticamente com permissões só para a aplicação, que corre
+sem privilégios de administrador. Faça cópias de segurança desta pasta e não a partilhe.
 
 ### Atualizar
 
@@ -49,56 +75,68 @@ git pull
 docker compose up -d --build
 ```
 
-Os dados em `./data` são preservados.
+Os dados em `./data` mantêm-se.
 
-## Desenvolvimento
+## Script de diagnóstico
 
-Backend (Python 3.12):
+Obrigatório **uma vez**, com o carro ligado à tomada e a bateria abaixo do limite, de preferência no horário
+de inverno (quando os Açores estão em UTC−1, o teste do fuso é conclusivo). Demora 20–60 min, porque a PSA
+limita os pedidos para acordar o carro.
 
 ```bash
 cd backend
 python -m venv .venv
-.venv/Scripts/pip install -e '.[dev]'      # Linux/macOS: .venv/bin/pip
+.venv/Scripts/pip install -e '.[dev]'          # Linux/macOS: .venv/bin/pip
+.venv/Scripts/python scripts/spike_deferred.py # Linux/macOS: .venv/bin/python
+```
+
+Para usar as mesmas credenciais do Docker, defina antes `PSACC_DATA_DIR` para a pasta `data` do repositório
+(PowerShell: `$env:PSACC_DATA_DIR = "..\data"`).
+
+O resultado fica em `spike-report.json` na pasta de dados, sem tokens, VIN nem localização. Veredicto do fuso:
+
+| Resultado | Significado |
+|---|---|
+| `local` | O carro lê a hora em hora dos Açores — a automação pode ser usada. |
+| `utc` | O carro lê a hora em UTC — não use a automação até isto ser corrigido. |
+| `inconclusive` | O teste não foi conclusivo (ver `reason`) — volte a correr o script. |
+
+Mais detalhes em [`backend/psacc/psa/NOTES.md`](backend/psacc/psa/NOTES.md).
+
+## Desenvolvimento
+
+Backend (Python 3.12, FastAPI):
+
+```bash
+cd backend
+python -m venv .venv
+.venv/Scripts/pip install -e '.[dev]'
 .venv/Scripts/python -m pytest -q
 .venv/Scripts/python -m ruff check psacc tests
 PSACC_FAKE=1 .venv/Scripts/python -m uvicorn psacc.main:app --port 8000
 ```
 
-`PSACC_FAKE=1` usa um carro falso em memória (modo demonstração, sem conta PSA). Nunca usar em produção.
+`PSACC_FAKE=1` usa um carro simulado em memória (modo de demonstração, com aviso visível na interface). Nunca
+em produção.
 
-Frontend (Node 22):
+Frontend (Node 22, Vite + React + TypeScript + Tailwind):
 
 ```bash
 cd frontend
 npm ci
-npm run dev        # http://localhost:5173, /api faz proxy para http://127.0.0.1:8000
+npm run dev     # http://localhost:5173, /api encaminhado para http://127.0.0.1:8000
 npm test
 npm run lint
 npm run build
 ```
 
-### Script de diagnóstico (spike)
+A arquitetura e os comandos para quem desenvolve estão em [`CLAUDE.md`](CLAUDE.md); o desenho completo em
+[`docs/superpowers/specs/`](docs/superpowers/specs/).
 
-**Obrigatório**: execute **uma vez**, com o carro ligado à tomada e a carregar, antes de confiar na
-automação. Confirma como a API trata o adiamento do carregamento, o significado de `charging.nextDelayedTime`
-e se o carro lê a hora programada em hora local dos Açores ou em UTC (o carro é posto a não carregar e
-reprogramado para ~5 min à frente; só conta um início de carga confirmado com dados frescos a essa hora,
-depois de uma leitura fresca sem carga mesmo antes dela; só é possível no horário de inverno, quando os
-Açores estão em UTC-1). Demora entre 20 e 60 min (os pedidos de
-"acordar" o carro estão limitados a 6 por 20 min).
+## Créditos e licença
 
-```bash
-cd backend
-# Windows: .venv/Scripts/python | Linux/macOS: .venv/bin/python
-.venv/Scripts/python scripts/spike_deferred.py
-```
+- Projeto original: [flobz/psa_car_controller](https://github.com/flobz/psa_car_controller), por
+  [flobz](https://github.com/flobz) e contribuidores.
+- Horários da tarifa: folheto "Ciclo Semanal" da [EDA — Electricidade dos Açores](https://www.eda.pt).
 
-Escreve `spike-report.json` (sem tokens, VIN nem posição) na pasta de dados. O que verificar no relatório
-está em `backend/psacc/psa/NOTES.md`. Veredicto do fuso horário: `local` — a automação pode ser usada;
-`utc` — a automação não deve ser usada até a hora programada ser corrigida; `inconclusive` — o teste não
-foi conclusivo (ver `reason`): não confie na automação e volte a correr o script (carro ligado à tomada,
-bateria abaixo do limite, horário de inverno).
-
-## Licença
-
-GPL-3.0, ver `LICENSE`. Baseado no projeto psa_car_controller.
+Distribuído sob a licença **GPL-3.0**, tal como o projeto original — ver [`LICENSE`](LICENSE).
