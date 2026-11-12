@@ -100,7 +100,20 @@ def init_db(url: str | None = None) -> None:
         kwargs["poolclass"] = StaticPool
     _engine = create_engine(url, **kwargs)
     SQLModel.metadata.create_all(_engine)
+    _restrict_db_file(url)
     _ensure_config()
+
+
+def _restrict_db_file(url: str) -> None:
+    """The database holds the password hash and the session secret: owner-only (best effort; on Windows chmod
+    only toggles the read-only flag, and 0o600 keeps the file writable)."""
+    prefix = "sqlite:///"
+    if not url.startswith(prefix) or url == "sqlite:///:memory:":
+        return
+    try:
+        os.chmod(url[len(prefix):], 0o600)
+    except OSError as exc:
+        logger.warning("could not restrict the database permissions: %s", type(exc).__name__)
 
 
 def _ensure_config() -> None:

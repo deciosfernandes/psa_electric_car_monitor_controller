@@ -1,8 +1,10 @@
 import hashlib
 import logging
+import os
 import pickle
 from secrets import token_hex, token_bytes
 from math import ceil
+from pathlib import Path
 from collections import defaultdict
 from xml.etree import cElementTree as ElT
 
@@ -307,9 +309,13 @@ def otp_path():
 
 
 def save_otp(obj, filename=None):
-    filename = filename or otp_path()
-    with open(filename, 'wb') as output:
+    """Atomic, owner-only (0600) write: the OTP state is a secret."""
+    filename = Path(filename or otp_path())
+    tmp = filename.with_name(filename.name + ".tmp")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, 'wb') as output:
         pickle.dump(obj, output)
+    os.replace(tmp, filename)
 
 
 class RenameUnpickler(pickle.Unpickler):

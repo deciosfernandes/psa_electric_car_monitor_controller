@@ -1,4 +1,6 @@
-from datetime import datetime, timedelta, timezone
+import os
+import stat
+from datetime import datetime, timezone
 
 import pytest
 
@@ -113,3 +115,30 @@ def test_init_db_creates_config_row_once():
     secret = AppConfig.model_validate_json(row.data).session_secret
     assert secret
     assert store.get_config().session_secret == secret
+
+
+def _mode(path) -> int:
+    return stat.S_IMODE(os.stat(path).st_mode)
+
+
+def test_db_file_restricted_to_owner(tmp_path, monkeypatch):
+    chmods = []
+    real_chmod = os.chmod
+    monkeypatch.setattr(store.os, "chmod", lambda p, m: chmods.append((str(p), m)) or real_chmod(p, m))
+    store.init_db()  # the default file database under DATA_DIR
+    db = tmp_path / "psacc.db"
+    assert db.exists()
+    assert (str(db), 0o600) in chmods
+    if os.name == "posix":
+        assert _mode(db) == 0o600
+
+
+def test_otp_saved_atomically_owner_only(tmp_path):
+    from psacc.psa.otp import otp
+
+    otp.save_otp({"x": 1})
+    otp.save_otp({"x": 2})
+    assert otp.load_otp() == {"x": 2}
+    assert [p.name for p in tmp_path.iterdir() if p.name.startswith("otp")] == ["otp.bin"]
+    if os.name == "posix":
+        assert _mode(tmp_path / "otp.bin") == 0o600
