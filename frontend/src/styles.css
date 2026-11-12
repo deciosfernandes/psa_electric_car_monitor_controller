@@ -1,0 +1,128 @@
+@import "tailwindcss";
+
+/* Design tokens (from the approved dashboard mockup). */
+:root {
+  --bg: #f4f6fa;
+  --card: #fff;
+  --text: #1d2433;
+  --muted: #64748b;
+  --border: #e5e7eb;
+  --primary: #2563eb;
+  --primary-soft: #eff6ff;
+  --primary-ink: #1d4ed8;
+  --vazio: #22c55e;
+  --cheias: #fbbf24;
+  --ponta: #ef4444;
+  --ok-soft: #dcfce7;
+  --ok-ink: #15803d;
+  --danger-soft: #fee2e2;
+  --danger-ink: #b91c1c;
+  --warn-soft: #fef3c7;
+  --warn-ink: #92400e;
+  --radius: 12px;
+  --shadow-card: 0 1px 3px #0001;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1420;
+    --card: #181f2e;
+    --text: #e6eaf2;
+    --muted: #94a3b8;
+    --border: #2a3345;
+    --primary: #3b82f6;
+    --primary-soft: #1b2a47;
+    --primary-ink: #93c5fd;
+    --ok-soft: #12301f;
+    --ok-ink: #4ade80;
+    --danger-soft: #3a1818;
+    --danger-ink: #fca5a5;
+    --warn-soft: #3a2e10;
+    --warn-ink: #fcd34d;
+    --shadow-card: 0 1px 3px #0006;
+  }
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-card: var(--card);
+  --color-ink: var(--text);
+  --color-muted: var(--muted);
+  --color-line: var(--border);
+  --color-primary: var(--primary);
+  --color-primary-soft: var(--primary-soft);
+  --color-primary-ink: var(--primary-ink);
+  --color-vazio: var(--vazio);
+  --color-cheias: var(--cheias);
+  --color-ponta: var(--ponta);
+  --color-danger-soft: var(--danger-soft);
+  --color-danger-ink: var(--danger-ink);
+  --font-sans: Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+}
+
+:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* Reusable pieces from the mockup (.c card, .k label, .big figure, .btn). */
+.card {
+  background: var(--card);
+  border-radius: var(--radius);
+  padding: 16px;
+  box-shadow: var(--shadow-card);
+}
+.label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+.big {
+  font-size: 38px;
+  font-weight: 700;
+  line-height: 1.05;
+}
+.btn {
+  padding: 10px 16px;
+  border-radius: 9px;
+  font-weight: 600;
+  font-size: 13px;
+  border: 0;
+  cursor: pointer;
+  background: var(--border);
+  color: var(--text);
+  white-space: nowrap;
+}
+.btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.btn-primary {
+  background: var(--primary);
+  color: #fff;
+}
+.field {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 9px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+}

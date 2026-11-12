@@ -1,0 +1,124 @@
+// Types mirror backend/psacc/api/*.py (datetimes are ISO-8601 strings with offset).
+
+export type PeriodType = 'vazio' | 'cheias' | 'ponta'
+export type Action = 'charge' | 'defer'
+export type DayType = 'weekday' | 'saturday' | 'sunday'
+
+export interface CarSnapshot {
+  vin: string
+  at: string
+  soc: number | null
+  range_km: number | null
+  plugged: boolean | null
+  charging: boolean | null
+  charge_status: string | null
+  charge_rate_kmh: number | null
+  next_delayed_time: string | null
+  latitude: number | null
+  longitude: number | null
+  locked: boolean | null
+  precond_on: boolean | null
+}
+
+export interface Event {
+  at: string
+  action: Action
+}
+
+export interface Override {
+  started_at: string
+  reason: string
+}
+
+export interface LastCommand {
+  mode: Action
+  at: string
+  verified: boolean
+  attempts: number
+  reason: string
+  alerted: boolean
+}
+
+export interface Status {
+  car: CarSnapshot | null // null while the PSA account is not configured
+  period: PeriodType
+  next_event: Event | null
+  automation: { enabled: boolean; offset_min: number; battery_limit: number }
+  override: Override | null
+  last_command: LastCommand | null
+  mqtt_connected: boolean
+  updated_at: string
+}
+
+export interface Slot {
+  start: number // minutes of the local day, 0..1440
+  end: number
+  period: PeriodType
+}
+
+export interface Season {
+  name: string
+  months: number[]
+  days: Record<DayType, Slot[]>
+}
+
+export interface Price {
+  period: PeriodType
+  eur_kwh: number
+  valid_from: string
+}
+
+export interface Tariff {
+  name: string
+  seasons: Season[]
+  prices: Price[]
+}
+
+export interface Activity {
+  at: string
+  kind: 'info' | 'action' | 'error'
+  message: string
+}
+
+export interface AuthState {
+  configured: boolean
+  logged_in: boolean
+}
+
+export class ApiError extends Error {
+  status: number
+  constructor(status: number, message: string) {
+    super(message)
+    this.status = status
+  }
+}
+
+async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+  const headers: Record<string, string> = {}
+  if (method !== 'GET') headers['X-PSACC'] = '1' // CSRF guard: required on every non-GET request
+  if (body !== undefined) headers['Content-Type'] = 'application/json'
+  const res = await fetch(path, {
+    method,
+    headers,
+    credentials: 'same-origin',
+    body: body === undefined ? undefined : JSON.stringify(body),
+  })
+  if (res.status === 401 && !path.startsWith('/api/auth/') && window.location.pathname !== '/login') {
+    window.location.assign('/login')
+  }
+  if (!res.ok) {
+    let detail = `Erro ${res.status}`
+    try {
+      const data = await res.json()
+      if (typeof data?.detail === 'string') detail = data.detail
+    } catch {
+      /* body is not JSON */
+    }
+    throw new ApiError(res.status, detail)
+  }
+  return res.status === 204 ? (undefined as T) : ((await res.json()) as T)
+}
+
+export const apiGet = <T,>(path: string) => request<T>('GET', path)
+export const apiSend = <T,>(method: 'POST' | 'PUT' | 'DELETE' | 'PATCH', path: string, body?: unknown) =>
+  request<T>(method, path, body)
