@@ -288,25 +288,47 @@ function ptToIso(text: string): string | null {
   return real ? `${y}-${mo}-${d}` : null
 }
 
-/** DD/MM/AAAA text input that reports an ISO date once the text is a real calendar date. */
+/** DD/MM/AAAA text input that reports an ISO date once the text is a real calendar date; follows `value` when it changes. */
 function DateField({ value, onChange, label }: { value: string; onChange: (iso: string) => void; label: string }) {
   const [text, setText] = useState(isoToPt(value))
+  const [seen, setSeen] = useState(value)
+  if (value !== seen) {
+    setSeen(value)
+    setText(isoToPt(value))
+  }
   const valid = ptToIso(text) !== null
   return (
-    <input
-      aria-label={label}
-      aria-invalid={!valid}
-      inputMode="numeric"
-      placeholder="DD/MM/AAAA"
-      className={`field !w-28 ${valid ? '' : '!border-danger-ink'}`}
-      value={text}
-      onChange={(e) => {
-        setText(e.target.value)
-        const iso = ptToIso(e.target.value)
-        if (iso) onChange(iso)
-      }}
-    />
+    <span>
+      <input
+        aria-label={label}
+        aria-invalid={!valid}
+        inputMode="numeric"
+        placeholder="DD/MM/AAAA"
+        className={`field !w-28 ${valid ? '' : '!border-danger-ink'}`}
+        value={text}
+        onChange={(e) => {
+          setText(e.target.value)
+          const iso = ptToIso(e.target.value)
+          if (iso) onChange(iso)
+        }}
+        onBlur={() => setText(isoToPt(value))}
+      />
+      {!valid && <span className="block text-[10px] text-danger-ink">Data inválida (DD/MM/AAAA)</span>}
+    </span>
   )
+}
+
+// Stable client-side row ids (never sent to the backend): rows keep their identity when others are removed.
+const rowIds = new WeakMap<Price, number>()
+let nextRowId = 0
+const rowId = (p: Price) => {
+  let id = rowIds.get(p)
+  if (id === undefined) rowIds.set(p, (id = nextRowId++))
+  return id
+}
+const withId = (next: Price, from?: Price): Price => {
+  rowIds.set(next, from ? rowId(from) : nextRowId++)
+  return next
 }
 
 interface PriceProps {
@@ -317,7 +339,7 @@ interface PriceProps {
 
 /** Prices per period, newest first; the latest one already valid is marked "em vigor". */
 export function PriceTable({ prices, today, onChange }: PriceProps) {
-  const update = (i: number, patch: Partial<Price>) => onChange(prices.map((p, k) => (k === i ? { ...p, ...patch } : p)))
+  const update = (i: number, patch: Partial<Price>) => onChange(prices.map((p, k) => (k === i ? withId({ ...p, ...patch }, p) : p)))
   return (
     <div className="grid gap-4 lg:grid-cols-3">
       {PERIODS.map((period) => {
@@ -333,7 +355,7 @@ export function PriceTable({ prices, today, onChange }: PriceProps) {
             </div>
             {rows.length === 0 && <div className="mb-1.5 text-xs text-muted">Sem preços.</div>}
             {rows.map(({ p, i }) => (
-              <div key={i} className="mb-1.5 flex flex-wrap items-center gap-2">
+              <div key={rowId(p)} className="mb-1.5 flex flex-wrap items-center gap-2">
                 <input
                   aria-label={`Preço ${period} (€/kWh)`}
                   type="number"
@@ -351,7 +373,7 @@ export function PriceTable({ prices, today, onChange }: PriceProps) {
                 </button>
               </div>
             ))}
-            <button className="btn !py-1 !text-xs" onClick={() => onChange([...prices, { period, eur_kwh: rows[0]?.p.eur_kwh ?? 0, valid_from: today }])}>
+            <button className="btn !py-1 !text-xs" onClick={() => onChange([...prices, withId({ period, eur_kwh: rows[0]?.p.eur_kwh ?? 0, valid_from: today })])}>
               Adicionar preço
             </button>
           </div>

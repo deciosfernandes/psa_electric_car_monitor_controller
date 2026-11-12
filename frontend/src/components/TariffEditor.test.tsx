@@ -1,7 +1,8 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { useState } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { Slot, Tariff } from '../api'
-import { cellsToSlots, paintCells, slotsToCells, TariffEditor } from './TariffEditor'
+import type { Price, Slot, Tariff } from '../api'
+import { cellsToSlots, paintCells, PriceTable, slotsToCells, TariffEditor } from './TariffEditor'
 
 afterEach(cleanup)
 
@@ -65,5 +66,41 @@ describe('TariffEditor keyboard fallback', () => {
     const next: Tariff = onChange.mock.calls[0][0]
     expect(next.seasons[0].months).toContain(6)
     expect(next.seasons[1].months).not.toContain(6)
+  })
+})
+
+describe('PriceTable date fields', () => {
+  const SAVED: Price[] = [
+    { period: 'vazio', eur_kwh: 0.1, valid_from: '2025-01-01' },
+    { period: 'vazio', eur_kwh: 0.2, valid_from: '2026-01-01' },
+  ]
+  function Harness() {
+    const [prices, setPrices] = useState(SAVED)
+    return (
+      <>
+        <PriceTable prices={prices} today="2026-11-12" onChange={setPrices} />
+        <button onClick={() => setPrices(SAVED)}>Descartar</button>
+      </>
+    )
+  }
+  const dates = () => screen.getAllByLabelText('Em vigor desde (vazio)').map((i) => (i as HTMLInputElement).value)
+
+  it('removing the first row leaves the other row showing its own date', () => {
+    render(<Harness />)
+    expect(dates()).toEqual(['01/01/2026', '01/01/2025']) // newest first
+    fireEvent.click(screen.getAllByRole('button', { name: 'Remover preço vazio' })[0])
+    expect(dates()).toEqual(['01/01/2025'])
+  })
+  it('discarding an edited date shows the saved date again', () => {
+    render(<Harness />)
+    fireEvent.change(screen.getAllByLabelText('Em vigor desde (vazio)')[0], { target: { value: '05/05/2026' } })
+    expect(dates()[0]).toBe('05/05/2026')
+    fireEvent.click(screen.getByRole('button', { name: 'Descartar' }))
+    expect(dates()).toEqual(['01/01/2026', '01/01/2025'])
+  })
+  it('shows a message under an invalid date', () => {
+    render(<Harness />)
+    fireEvent.change(screen.getAllByLabelText('Em vigor desde (vazio)')[0], { target: { value: '31/02/2026' } })
+    expect(screen.getByText('Data inválida (DD/MM/AAAA)')).toBeTruthy()
   })
 })
