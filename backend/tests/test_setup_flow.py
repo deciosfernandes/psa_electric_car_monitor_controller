@@ -46,7 +46,8 @@ def test_start_login_headless_failure_returns_manual_url(monkeypatch):
     result = setup_flow.start_login("com.psa.mym.mypeugeot", "a@b.pt", "pw", "PT")
     assert result.ok is False
     assert result.manual_url == "https://auth.example/authorize"
-    assert "boom" in result.error
+    assert "HeadlessOAuthError" in result.error
+    assert "boom" not in result.error
     assert store.get_psa() is None
     # the user finishes manually with the code from the redirect
     monkeypatch.setattr(setup_flow, "_pending", setup)

@@ -420,3 +420,15 @@ def test_close_cancels_round_in_flight():
     assert timer.cancelled
     engine.verify_now()  # nothing left to verify
     assert len(charge_calls(gw)) == 1
+
+
+def test_closed_engine_is_inert():
+    engine, gw, _, sched, _ = make()
+    engine.close()
+    engine.tick()
+    engine.on_status(snap(plugged=True, charging=True, charge_status="InProgress", soc=50.0))
+    engine.manual_charge()
+    engine.verify_now()
+    assert gw.calls == []
+    assert sched.scheduled == []
+    assert store.get_override() is None

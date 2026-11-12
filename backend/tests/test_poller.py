@@ -223,3 +223,24 @@ def test_failing_engine_does_not_skip_token_saving():
     engine.on_status = boom
     poller.run_once()
     assert calls == [1]
+
+
+def test_poller_stopped_during_fetch_does_not_act():
+    # replaced while a poll was in flight: no engine feed, no alerts, no token save over the new account
+    clock = Clock(THU_0648)
+    saved = []
+    gateway = RecordingGateway()
+    gateway.auth_up = False
+    poller, _, engine, notifier = make(clock, gateway=gateway, settle_s=0, save_tokens=lambda: saved.append(1))
+    real_snapshot = gateway.snapshot
+
+    def slow_snapshot(refresh=False):
+        poller.stop()  # the API swaps the runtime while this REST call is still running
+        return real_snapshot(refresh)
+
+    gateway.snapshot = slow_snapshot
+    poller.run_once()
+    assert engine.statuses == []
+    assert saved == []
+    assert notifier.alerts == []
+    assert poller.latest() is None

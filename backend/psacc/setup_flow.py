@@ -6,7 +6,7 @@ from psacc import store
 from psacc.gateway import PsaGateway
 from psacc.psa.otp.otp import load_otp, new_otp_session
 from psacc.psa.setup.app_decoder import InitialSetup
-from psacc.psa.setup.headless_oauth import HeadlessOAuthError, get_oauth_code_headless
+from psacc.psa.setup.headless_oauth import get_oauth_code_headless
 from psacc.psa_client import PSAClient
 
 logger = logging.getLogger(__name__)
@@ -35,12 +35,9 @@ def start_login(app_name: str, email: str, password: str, country: str) -> Login
     try:
         code = get_oauth_code_headless(auth_url, email, password, scheme)
         finish_login(code)
-    except HeadlessOAuthError as ex:
-        logger.warning("headless oauth failed: %s", ex)
-        return LoginResult(ok=False, manual_url=auth_url, error=str(ex))
-    except Exception as ex:
+    except Exception as ex:  # messages may embed page/response bodies or credentials: keep only the type
         logger.warning("headless oauth failed: %s", type(ex).__name__)
-        return LoginResult(ok=False, manual_url=auth_url, error=f"{type(ex).__name__}: {ex}")
+        return LoginResult(ok=False, manual_url=auth_url, error=f"login automático falhou ({type(ex).__name__})")
     return LoginResult(ok=True)
 
 

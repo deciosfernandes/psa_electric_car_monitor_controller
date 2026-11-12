@@ -29,6 +29,12 @@ logger = logging.getLogger(__name__)
 
 _login_required = Depends(require_login)
 
+# CSRF guard: every state-changing /api request must carry this header. A cross-site page cannot add a custom
+# header without a CORS preflight, and the API grants no CORS, so forged form posts/fetches are refused.
+CSRF_HEADER = "X-PSACC"
+CSRF_VALUE = "1"
+_SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
+
 
 class SpaStaticFiles(StaticFiles):
     """Static files with the SPA fallback: unknown non-API paths serve ``index.html``."""
@@ -56,8 +62,7 @@ def create_app(db_url: str | None = None, gateway_factory: GatewayFactory | None
         try:
             yield
         finally:
-            with app.state.car_lock:
-                stop_car(app)
+            stop_car(app)
             notifier.stop()
 
     app = FastAPI(title="PSACC", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
@@ -66,6 +71,19 @@ def create_app(db_url: str | None = None, gateway_factory: GatewayFactory | None
     app.add_middleware(
         SessionMiddleware, secret_key=store.get_config().session_secret, same_site="lax", https_only=False
     )
+
+    @app.middleware("http")
+    async def csrf_guard(request: Request, call_next):
+        path = request.url.path
+        if (
+            request.method not in _SAFE_METHODS
+            and (path == "/api" or path.startswith("/api/"))
+            and request.headers.get(CSRF_HEADER) != CSRF_VALUE
+        ):
+            return JSONResponse(
+                status_code=403, content={"detail": f"Pedido recusado: falta o cabeçalho {CSRF_HEADER}"}
+            )
+        return await call_next(request)
 
     @app.exception_handler(RequestValidationError)
     async def validation_error(_: Request, exc: RequestValidationError) -> JSONResponse:

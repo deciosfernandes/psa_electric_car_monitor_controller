@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, BackgroundTasks, Body, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Body, FastAPI, Query, Request
 from pydantic import BaseModel, ValidationError
 
 from .. import store
@@ -23,11 +23,15 @@ def _automation(cfg: AppConfig) -> dict:
     return {"enabled": cfg.automation_enabled, "offset_min": cfg.offset_min, "battery_limit": cfg.battery_limit}
 
 
+def _tick_current(app: FastAPI) -> None:
+    engine = app.state.engine  # resolved when the task runs: the runtime may have been rebuilt meanwhile
+    if engine is not None:
+        engine.tick()
+
+
 def _retick(request: Request, background: BackgroundTasks) -> None:
     """Re-evaluate the automation after the response (the engine may talk to the car)."""
-    engine = request.app.state.engine
-    if engine is not None:
-        background.add_task(engine.tick)
+    background.add_task(_tick_current, request.app)
 
 
 @router.get("/automation")

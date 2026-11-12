@@ -30,8 +30,8 @@ def _command(name: str, done: str, send: Callable[[], bool]) -> dict:
     """Send one car command; the outcome is logged in the activity log."""
     try:
         ok = bool(send())
-    except Exception:
-        logger.exception("%s command failed", name)
+    except Exception as exc:
+        logger.warning("%s command failed: %s", name, type(exc).__name__)
         ok = False
     message = done if ok else f"O comando falhou: {name}"
     store.log_activity("action" if ok else "error", message)

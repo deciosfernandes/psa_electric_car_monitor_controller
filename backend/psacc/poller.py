@@ -96,12 +96,14 @@ class Poller:
             auth_error = True
         except Exception:
             logger.exception("car snapshot failed")
+        if self._stop.is_set():
+            return  # stopped (replaced) while fetching: its gateway, engine and tokens are no longer current
         self._guard(self._check_auth, auth_error)
         self._guard(self._check_mqtt, now)
         if snap is not None:
             self._discard_pushed()
             self._guard(self._handle, snap)
-        if self._save_tokens is not None:
+        if self._save_tokens is not None and not self._stop.is_set():
             self._guard(self._save_tokens)
 
     def next_wake(self) -> datetime:
@@ -135,6 +137,8 @@ class Poller:
         return snap
 
     def _handle(self, snap: CarSnapshot) -> None:
+        if self._stop.is_set():
+            return
         self._latest = snap
         self.engine.on_status(snap)
 

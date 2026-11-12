@@ -96,11 +96,14 @@ class Engine:
         self._lock = threading.RLock()  # tick() runs from the poller, MQTT callbacks, API and timer threads
         self._round: _Round | None = None
         self._plugged: bool | None = None
+        self._closed = False  # set by close(): every entry point becomes a no-op
 
     # ---- public entry points: never raise -------------------------------------------------------------
 
     def tick(self) -> None:
         with self._lock:
+            if self._closed:
+                return
             try:
                 car = self._snapshot(refresh=False)
                 if car is not None:
@@ -110,6 +113,8 @@ class Engine:
 
     def on_status(self, snap: CarSnapshot) -> None:
         with self._lock:
+            if self._closed:
+                return
             try:
                 self._record_status(snap)
                 self._evaluate(snap)
@@ -118,6 +123,8 @@ class Engine:
 
     def manual_charge(self) -> None:
         with self._lock:
+            if self._closed:
+                return
             try:
                 car = self._snapshot(refresh=False)
                 if car is not None and car.plugged is False:
@@ -141,6 +148,8 @@ class Engine:
 
     def cancel_override(self) -> None:
         with self._lock:
+            if self._closed:
+                return
             try:
                 if store.get_override() is None:
                     return
@@ -152,13 +161,17 @@ class Engine:
             self.tick()
 
     def close(self) -> None:
-        """Drop the round in flight (its timer is cancelled), e.g. before this engine is replaced."""
+        """Shut this engine down for good (it is being replaced): cancel the round in flight and ignore every
+        later call, so a replaced engine never commands the car through its old gateway."""
         with self._lock:
+            self._closed = True
             self._cancel_round()
 
     def verify_now(self) -> None:
         """Advance the round in flight: verify the last command, re-send it or give up (timer callback)."""
         with self._lock:
+            if self._closed:
+                return
             try:
                 if self._round is not None:
                     self._step(self._round)

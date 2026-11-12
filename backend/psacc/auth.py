@@ -11,6 +11,7 @@ from typing import Callable
 from fastapi import HTTPException, Request
 
 MIN_PASSWORD_LEN = 8
+MAX_PASSWORD_LEN = 1024
 MAX_FAILURES = 5
 FAILURE_WINDOW_S = 5 * 60
 SESSION_KEY = "auth"
@@ -41,11 +42,16 @@ def verify_password(password: str, stored: str | None) -> bool:
 
 
 class LoginRateLimiter:
-    """Blocks logins after ``MAX_FAILURES`` failures within ``FAILURE_WINDOW_S`` (single user: one global bucket)."""
+    """Allows at most ``MAX_FAILURES`` failed logins within ``FAILURE_WINDOW_S`` (single user: one global bucket).
+
+    An attempt is reserved atomically with ``try_acquire()`` *before* the slow password check, and attempts still
+    in flight count as failures, so a burst of parallel guesses can never exceed the limit.
+    """
 
     def __init__(self, clock: Callable[[], float] = time.monotonic):
         self._clock = clock
         self._failures: deque[float] = deque()
+        self._in_flight = 0
         self._lock = threading.Lock()
 
     def _prune(self) -> None:
@@ -53,18 +59,22 @@ class LoginRateLimiter:
         while self._failures and self._failures[0] <= cutoff:
             self._failures.popleft()
 
-    def blocked(self) -> bool:
+    def try_acquire(self) -> bool:
+        """Reserve one attempt; False when the limit is reached. Every True must be followed by ``release``."""
         with self._lock:
             self._prune()
-            return len(self._failures) >= MAX_FAILURES
+            if len(self._failures) + self._in_flight >= MAX_FAILURES:
+                return False
+            self._in_flight += 1
+            return True
 
-    def failure(self) -> None:
+    def release(self, success: bool) -> None:
         with self._lock:
-            self._failures.append(self._clock())
-
-    def success(self) -> None:
-        with self._lock:
-            self._failures.clear()
+            self._in_flight -= 1
+            if success:
+                self._failures.clear()
+            else:
+                self._failures.append(self._clock())
 
 
 def is_logged_in(request: Request) -> bool:

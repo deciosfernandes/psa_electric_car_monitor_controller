@@ -86,6 +86,8 @@ def _error_text(err: dict) -> str:
         return f"{label}: tem de ser um número"
     if kind.startswith("bool_"):
         return f"{label}: tem de ser verdadeiro ou falso"
+    if kind == "string_too_long":
+        return f"{label}: demasiado longo (máximo {ctx.get('max_length')} caracteres)"
     if kind == "string_too_short":
         return f"{label}: demasiado curto (mínimo {ctx.get('min_length')} caracteres)"
     if kind == "json_invalid":
@@ -109,38 +111,52 @@ def _close_gateway(gateway: CarGateway | None) -> None:
     if isinstance(gateway, PsaGateway):
         try:
             gateway.client.remote_client.stop()  # MQTT of a replaced client must not keep running
-        except Exception:
-            logger.exception("could not stop MQTT")
+        except Exception as exc:
+            logger.warning("could not stop MQTT: %s", type(exc).__name__)
+
+
+def _shutdown(gateway: CarGateway | None, engine: Engine | None, poller: Poller | None) -> None:
+    """Terminal: a stopped poller and a closed engine never act again, even if a poll was still in flight."""
+    if poller is not None:
+        poller.stop()
+    if engine is not None:
+        engine.close()
+    _close_gateway(gateway)
 
 
 def stop_car(app: FastAPI) -> None:
     state = app.state
-    if state.poller is not None:
-        state.poller.stop()
-    if state.engine is not None:
-        state.engine.close()
-    _close_gateway(state.gateway)
-    state.gateway = state.engine = state.poller = None
+    with state.car_lock:
+        old = state.gateway, state.engine, state.poller
+        state.gateway = state.engine = state.poller = None
+        _shutdown(*old)
 
 
 def start_car(app: FastAPI) -> None:
-    """(Re)build gateway, engine and poller from the stored PSA account; a fresh PSAClient resets auth flags."""
+    """(Re)build gateway, engine and poller from the stored PSA account; a fresh PSAClient resets auth flags.
+
+    The new runtime is built first and swapped in at once (requests never see a transient "no account"), then
+    the old one is shut down before the new poller starts, so only one poller/engine ever commands the car.
+    """
     state = app.state
     with state.car_lock:
-        stop_car(app)
         try:
             gateway = state.gateway_factory()
-        except Exception:
-            logger.exception("could not load the PSA gateway")
+        except Exception as exc:
+            logger.warning("could not load the PSA gateway: %s", type(exc).__name__)
             gateway = None
-        if gateway is None:
+        engine = poller = None
+        if gateway is not None:
+            save_tokens = psa_token_saver(gateway.client) if isinstance(gateway, PsaGateway) else None
+            engine = Engine(gateway, state.notifier)
+            poller = Poller(gateway, engine, state.notifier, save_tokens=save_tokens)
+        else:
             logger.info("no PSA account configured, car features disabled")
-            return
-        save_tokens = psa_token_saver(gateway.client) if isinstance(gateway, PsaGateway) else None
-        engine = Engine(gateway, state.notifier)
-        poller = Poller(gateway, engine, state.notifier, save_tokens=save_tokens)
+        old = state.gateway, state.engine, state.poller
         state.gateway, state.engine, state.poller = gateway, engine, poller
-        poller.start()
+        _shutdown(*old)
+        if poller is not None:
+            poller.start()
 
 
 def init_state(app: FastAPI, gateway_factory: GatewayFactory, notifier) -> None:
