@@ -48,7 +48,7 @@ cd psa_electric_car_monitor_controller
 docker compose up -d --build
 ```
 
-Open `http://<server>:5000`.
+Open `http://<server>:3208` (host port set in `docker-compose.yml`; the container listens on 5000).
 
 ### First run
 
