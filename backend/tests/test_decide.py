@@ -69,12 +69,10 @@ def run_at(where, now=None, c=None, override=None, work_charge_sent=False):
 
 def test_decide_no_home_place():
     assert run_at("unset", at(1)) == Decision(None, "Defina o local Casa")
-    assert run_at("unset", override=OVR) == Decision(None, "Defina o local Casa")
 
 
 def test_decide_unknown_position():
     assert run_at("unknown", at(1)) == Decision(None, "Posição do carro desconhecida")
-    assert run_at("unknown", override=OVR).mode is None
 
 
 def test_decide_work_charge_once():
@@ -82,7 +80,7 @@ def test_decide_work_charge_once():
     # battery limit and tariff ignored: work charging is free
     assert run_at("work", at(12), car(soc=95)) == Decision("charge", "Carga no Trabalho")
     assert run_at("work", work_charge_sent=True) == Decision(None, "No Trabalho (carga já pedida)")
-    assert run_at("work", override=OVR, work_charge_sent=True).mode is None  # override ignored at work
+    assert run_at("work", override=OVR) == Decision("charge", "Carga no Trabalho")
 
 
 def test_decide_other_place_no_command():
@@ -97,3 +95,10 @@ def test_decide_other_place_manual_override_charges():
 def test_decide_location_checked_after_unplugged_and_unknown_state():
     assert run_at("work", c=car(plugged=False), override=OVR) == Decision(None, "Cabo desligado", True)
     assert run_at("unset", c=car(soc=None)) == Decision(None, "Estado do carro desconhecido")
+
+
+def test_decide_manual_override_charges_everywhere():
+    for where in ("unset", "unknown", "other"):
+        assert run_at(where, at(12), car(soc=95), override=OVR) == Decision("charge", "Carga manual ativa"), where
+    assert run_at("work", override=OVR, work_charge_sent=True) == Decision("charge", "Carga manual ativa")
+    assert run_at("unknown", c=car(plugged=False), override=OVR) == Decision(None, "Cabo desligado", True)

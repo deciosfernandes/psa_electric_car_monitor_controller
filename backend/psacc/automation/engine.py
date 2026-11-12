@@ -258,7 +258,7 @@ class Engine:
             ):
                 self._cancel_round()
             return
-        work = where == "work"
+        work = where == "work" and not work_charge_sent  # this episode's one work charge (not a manual one)
         if self._round is not None:
             if self._round.mode == decision.mode:
                 if work:  # a charge already being enforced counts as this episode's work charge
@@ -269,9 +269,10 @@ class Engine:
         last = store.get_last_command()
         # at Trabalho the charge is sent once per episode even if a charge was verified before (e.g. at Casa)
         if work or replugged or self._needs_command(decision.mode, car, last, now):
+            if work:  # stored first: a failure after the send must not lead to a second work charge
+                store.set_work_episode(WorkEpisode(charge_sent_at=now))
             self._start_round(decision, last, work=work)
             if work:
-                store.set_work_episode(WorkEpisode(charge_sent_at=now))
                 store.log_activity("info", "Carga no Trabalho iniciada", at=now)
 
     def _locate(self, car: CarSnapshot, now: datetime) -> Where:
@@ -285,9 +286,10 @@ class Engine:
         return self.last_where
 
     def _work_charge_sent(self, car: CarSnapshot, where: Where) -> bool:
-        """The plug-in episode at Trabalho ends when the car is unplugged or known to be elsewhere."""
+        """The plug-in episode at Trabalho ends when the car is unplugged or located at another known place
+        ("unset" does not end it: deleting and re-creating Casa must not allow a second work charge)."""
         episode = store.get_work_episode()
-        if episode is not None and (car.plugged is False or where not in ("work", "unknown")):
+        if episode is not None and (car.plugged is False or where in ("home", "other")):
             store.set_work_episode(None)
             return False
         return episode is not None
@@ -395,11 +397,8 @@ class Engine:
         if r.alerted:
             logger.warning("%s still failing after %d attempts (already alerted)", r.mode, r.attempts)
             return
-        store.log_activity(
-            "error",
-            f"Não consegui {_verb(r.mode)} a carga diferida após {r.attempts} tentativas ({r.reason})",
-            at=self._clock(),
-        )
+        what = "iniciar a carga no Trabalho" if r.work else f"{_verb(r.mode)} a carga diferida"
+        store.log_activity("error", f"Não consegui {what} após {r.attempts} tentativas ({r.reason})", at=self._clock())
         r.alerted = True
         self._persist(r, verified=False)
         if r.work:

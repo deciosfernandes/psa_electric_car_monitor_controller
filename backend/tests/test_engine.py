@@ -649,6 +649,7 @@ def test_work_charge_failure_alert_text():
         engine.verify_now()
     assert len(charge_calls(gw)) == 3
     assert notifier.alerts == ["⚠️ PSACC: não consegui iniciar a carga no Trabalho."]
+    assert messages("error") == ["Não consegui iniciar a carga no Trabalho após 3 tentativas (Carga no Trabalho)"]
 
 
 def test_no_defer_outside_home():
@@ -696,3 +697,29 @@ def test_defer_retry_never_sent_once_car_is_not_known_at_home():
     engine.last_where = "unknown"  # e.g. located elsewhere by an evaluation that then failed
     engine.verify_now()
     assert len(charge_calls(gw)) == 1 and not engine.verification_pending()
+
+
+def test_work_episode_kept_when_home_place_recreated():
+    add_work()
+    engine, gw, *_ = make(car=at_place(WORK, plugged=True, charging=False))
+    engine.on_status(gw.snap)
+    home = next(p for p in store.list_places() if p.kind == "home")
+    store.delete_place(home.id)
+    engine.tick()
+    assert engine.last_where == "unset" and store.get_work_episode() is not None
+    store.save_place(Place(name="Casa", kind="home", lat=HOME[0], lon=HOME[1]))
+    engine.tick()
+    assert len(charge_calls(gw)) == 1
+
+
+def test_manual_charge_at_work_after_episode_charge():
+    add_work()
+    engine, gw, notifier, sched, clock = make(car=at_place(WORK, plugged=True, charging=False), apply_effect=True)
+    engine.on_status(gw.snap)
+    engine.verify_now()
+    gw.snap = dataclasses.replace(gw.snap, charging=False, charge_status="Stopped")  # charge stopped later
+    clock.now = thu(20)
+    engine.manual_charge()
+    assert [c[1] for c in charge_calls(gw)] == ["charge", "charge"]
+    engine.on_status(gw.snap)  # the manual round is being verified: no third command
+    assert len(charge_calls(gw)) == 2

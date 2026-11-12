@@ -11,6 +11,14 @@ from ..tariff.model import Tariff
 from ..tariff.schedule import desired_mode, period_at
 
 
+_NOT_HOME = {
+    "unset": "Defina o local Casa",
+    "unknown": "Posição do carro desconhecida",
+    "work": "No Trabalho (carga já pedida)",
+    "other": "Fora de Casa",
+}
+
+
 @dataclass(frozen=True)
 class Decision:
     mode: Literal["charge", "defer"] | None  # None = do nothing
@@ -34,18 +42,12 @@ def decide(
         return Decision(None, "Estado do carro desconhecido")
     if car.plugged is False:
         return Decision(None, "Cabo desligado", clear_override=override is not None)
-    if where == "unset":
-        return Decision(None, "Defina o local Casa")
-    if where == "unknown":
-        return Decision(None, "Posição do carro desconhecida")
-    if where == "work":  # free charging: once per plug-in episode, whatever the override, limit or tariff
-        return (
-            Decision(None, "No Trabalho (carga já pedida)")
-            if work_charge_sent
-            else Decision("charge", "Carga no Trabalho")
-        )
-    if where == "other":
-        return Decision("charge", "Carga manual ativa") if override else Decision(None, "Fora de Casa")
+    if where != "home":  # never "defer" here; "Carregar agora" keeps working anywhere
+        if where == "work" and not work_charge_sent:  # free charging: once per plug-in episode
+            return Decision("charge", "Carga no Trabalho")
+        if override:
+            return Decision("charge", "Carga manual ativa")
+        return Decision(None, _NOT_HOME[where])
     at_limit = car.soc >= cfg.battery_limit
     if override and at_limit:
         return Decision("defer", f"Limite de {cfg.battery_limit} % atingido (carga manual terminada)", True)
