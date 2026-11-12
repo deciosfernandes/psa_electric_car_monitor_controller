@@ -73,3 +73,32 @@ def test_test_sends_confirmation(post):
     assert make(AppConfig(discord_webhook=URL)).test() is True
 
     post.assert_called_once_with(URL, json={"content": "✅ PSACC ligado ao Discord"}, timeout=10)
+
+
+def test_queued_notifier_delivers_in_background_and_swallows_errors():
+    import threading
+
+    from psacc.notify import QueuedNotifier
+
+    class Inner:
+        def __init__(self):
+            self.sent = []
+            self.threads = set()
+
+        def alert(self, msg):
+            self.threads.add(threading.current_thread())
+            if msg == "boom":
+                raise RuntimeError("down")
+            self.sent.append(("alert", msg))
+
+        def info(self, msg):
+            self.sent.append(("info", msg))
+
+    inner = Inner()
+    queued = QueuedNotifier(inner)
+    queued.alert("boom")
+    queued.alert("a")
+    queued.info("i")
+    queued.join()
+    assert inner.sent == [("alert", "a"), ("info", "i")]
+    assert threading.current_thread() not in inner.threads

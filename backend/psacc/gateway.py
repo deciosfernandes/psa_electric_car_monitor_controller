@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from typing import Callable, Literal, Protocol
 
 from psacc.psa.constants import DELAYED_CHARGE, IMMEDIATE_CHARGE, INPROGRESS
+from psacc.psa.RemoteClient import parse_event_date
 from psacc.psa.models import VehicleStatus
 from psacc.psa_client import PSAClient
 from psacc.utils import RateLimitException
@@ -46,6 +47,8 @@ class CarGateway(Protocol):
     def lights(self) -> bool: ...
 
     def mqtt_connected(self) -> bool: ...
+
+    def auth_ok(self) -> bool: ...  # False while PSA rejects our tokens (login/OTP must be redone)
 
     def subscribe(self, cb: Callable[[CarSnapshot], None]) -> None: ...  # MQTT-pushed snapshots
 
@@ -95,11 +98,49 @@ def snapshot_from_status(vin: str, status: VehicleStatus) -> CarSnapshot:
     )
 
 
+def _number(value) -> float | None:
+    return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+
+
+def merge_mqtt_event(last: CarSnapshot, data: dict) -> CarSnapshot | None:
+    """Apply an MQTT vehicle event to the last REST snapshot; None when it is older or carries nothing usable.
+
+    Only the fields whose MQTT meaning is known are taken (``soc_batt``, ``autonomy_zev``, ``cable_detected``);
+    the charging status is not mapped from MQTT (its encoding is undocumented), except that an unplugged car
+    cannot be charging.
+    """
+    at = parse_event_date(data.get("date"))
+    if at < last.at:
+        return None
+    charging_state = data.get("charging_state") or {}
+    changes: dict = {}
+    if (soc := _number(charging_state.get("soc_batt"))) is not None:
+        changes["soc"] = soc
+    if (autonomy := _number(charging_state.get("autonomy_zev"))) is not None:
+        changes["range_km"] = autonomy
+    cable = charging_state.get("cable_detected")
+    if cable in (0, 1):
+        changes["plugged"] = bool(cable)
+        if not cable:
+            changes.update(charging=False, charge_status="Disconnected", charge_rate_kmh=0)
+    if not changes:
+        return None
+    return dataclasses.replace(last, at=at, **changes)
+
+
 class PsaGateway:
+    """CarGateway over the PSA REST API (state) and MQTT (commands, pushed events).
+
+    MQTT vehicle events are merged into the last REST snapshot without any network call (they arrive on the
+    paho network thread) and handed to the subscribers, which must not block.
+    """
+
     def __init__(self, client: PSAClient, vin: str):
         self.client = client
         self.vin = vin
         self._subscribers: list[Callable[[CarSnapshot], None]] = []
+        self._last: CarSnapshot | None = None
+        self._remote.on_event.append(self._on_mqtt_event)
 
     @property
     def _remote(self):
@@ -119,7 +160,22 @@ class PsaGateway:
         mqtt_lock, mqtt_at = self._remote.lock_state.get(self.vin), self._remote.lock_state_at.get(self.vin)
         if mqtt_lock is not None and mqtt_at is not None and mqtt_at > snap.at:
             snap = dataclasses.replace(snap, locked=mqtt_lock == "Locked")
+        self._last = snap
         return snap
+
+    def _on_mqtt_event(self, data: dict) -> None:
+        last = self._last
+        if data.get("vin") != self.vin or last is None:
+            return  # before the first REST snapshot there is nothing to merge into: the next poll catches up
+        snap = merge_mqtt_event(last, data)
+        if snap is None:
+            return
+        self._last = snap
+        for cb in list(self._subscribers):
+            try:
+                cb(snap)
+            except Exception:
+                logger.exception("snapshot subscriber failed")
 
     def set_charge_mode(self, mode: Literal["charge", "defer"], program_hour: tuple[int, int]) -> bool:
         charge_type = IMMEDIATE_CHARGE if mode == "charge" else DELAYED_CHARGE
@@ -141,6 +197,8 @@ class PsaGateway:
         mqtt_client = self._remote.mqtt_client
         return mqtt_client is not None and mqtt_client.is_connected()
 
+    def auth_ok(self) -> bool:
+        return not (self.client.manager.auth_failed is True or self._remote.auth_failed is True)
+
     def subscribe(self, cb: Callable[[CarSnapshot], None]) -> None:
-        # wired to MQTT pushes in a later task
         self._subscribers.append(cb)

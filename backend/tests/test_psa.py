@@ -89,3 +89,24 @@ class TestMqttLockState(unittest.TestCase):
                       % self.VIN.encode("utf-8")
         self.remote_client._on_mqtt_message(None, None, msg)
         self.assertEqual({}, self.remote_client.lock_state)
+
+
+class TestMqttEventHook(unittest.TestCase):
+    def test_event_callbacks_receive_payload_and_errors_are_contained(self):
+        remote_client = get_rc()
+        received = []
+        remote_client.on_event.append(lambda data: 1 / 0)
+        remote_client.on_event.append(received.append)
+        msg = MQTTMessage(topic=(MQTT_EVENT_TOPIC + "vin").encode("utf-8"))
+        msg.payload = message_without_precond
+        remote_client._on_mqtt_message(None, None, msg)
+        self.assertEqual(76, received[0]["charging_state"]["soc_batt"])
+
+    def test_event_without_precond_state_still_dispatched(self):
+        remote_client = get_rc()
+        received = []
+        remote_client.on_event.append(received.append)
+        msg = MQTTMessage(topic=(MQTT_EVENT_TOPIC + "vin").encode("utf-8"))
+        msg.payload = b'{"vin":"vin","charging_state":{"soc_batt":50}}'
+        remote_client._on_mqtt_message(None, None, msg)
+        self.assertEqual("vin", received[0]["vin"])

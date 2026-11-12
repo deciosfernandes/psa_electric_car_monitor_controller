@@ -23,6 +23,7 @@ class FakeGateway:
         self.apply_effect = apply_effect
         self.fail_next = 0
         self.mqtt_up = True
+        self.auth_up = True
         self.calls: list[tuple] = []
         self._subscribers: list[Callable[[CarSnapshot], None]] = []
 
@@ -59,6 +60,9 @@ class FakeGateway:
 
     def mqtt_connected(self) -> bool:
         return self.mqtt_up
+
+    def auth_ok(self) -> bool:
+        return self.auth_up
 
     def subscribe(self, cb: Callable[[CarSnapshot], None]) -> None:
         self._subscribers.append(cb)

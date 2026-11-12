@@ -99,3 +99,56 @@ def test_fake_gateway_effect_and_failures():
     assert fake.calls == [("set_charge_mode", "charge", (1, 0))] * 2
     fake.emit(dataclasses.replace(fake.snap, soc=80.0))
     assert received[0].soc == 80.0 and fake.snapshot().soc == 80.0
+
+
+def _mqtt_gateway():
+    client = MagicMock()
+    client.get_vehicle_info.return_value = load("status_v4_17.json")  # 61.5 %, plugged, InProgress at 10:15:30
+    client.remote_client.lock_state = {}
+    client.remote_client.lock_state_at = {}
+    client.remote_client.on_event = []
+    gateway = PsaGateway(client, "VIN")
+    received = []
+    gateway.subscribe(received.append)
+    return gateway, client, received
+
+
+def test_mqtt_event_merges_into_last_snapshot():
+    gateway, client, received = _mqtt_gateway()
+    on_event = client.remote_client.on_event[0]
+    on_event({"vin": "VIN", "date": "2024-08-01T11:00:00Z", "charging_state": {"soc_batt": 70, "autonomy_zev": 150}})
+    assert received == []  # nothing to merge into before the first REST snapshot
+    rest = gateway.snapshot()
+    on_event({"vin": "OTHER", "date": "2024-08-01T11:00:00Z", "charging_state": {"soc_batt": 70}})
+    on_event({"vin": "VIN", "date": "2024-08-01T10:00:00Z", "charging_state": {"soc_batt": 70}})  # older than REST
+    on_event({"vin": "VIN", "date": "2024-08-01T11:00:00Z", "charging_state": {"rate": 0}})  # nothing usable
+    assert received == []
+    on_event({"vin": "VIN", "date": "2024-08-01T11:00:00Z", "charging_state": {"soc_batt": 70, "autonomy_zev": 150}})
+    assert received[-1] == dataclasses.replace(rest, at=datetime(2024, 8, 1, 11, tzinfo=timezone.utc), soc=70.0,
+                                               range_km=150)
+    on_event({"vin": "VIN", "date": "2024-08-01T11:05:00Z", "charging_state": {"cable_detected": 0}})
+    unplugged = received[-1]
+    assert (unplugged.soc, unplugged.plugged, unplugged.charging, unplugged.charge_status) == (
+        70.0, False, False, "Disconnected")
+
+
+def test_mqtt_event_subscriber_errors_are_contained():
+    gateway, client, received = _mqtt_gateway()
+    gateway.subscribe(lambda snap: 1 / 0)
+    gateway.snapshot()
+    client.remote_client.on_event[0]({"vin": "VIN", "date": "2024-08-01T11:00:00Z",
+                                      "charging_state": {"soc_batt": 70}})
+    assert received[-1].soc == 70.0
+
+
+def test_auth_ok_reflects_token_refresh_failures():
+    client = MagicMock()
+    client.manager.auth_failed = False
+    client.remote_client.auth_failed = False
+    gateway = PsaGateway(client, "VIN")
+    assert gateway.auth_ok() is True
+    client.remote_client.auth_failed = True
+    assert gateway.auth_ok() is False
+    client.remote_client.auth_failed = False
+    client.manager.auth_failed = True
+    assert gateway.auth_ok() is False

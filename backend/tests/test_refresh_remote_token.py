@@ -148,3 +148,30 @@ class TestRefreshRemoteToken(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class TestAuthFailedFlag(unittest.TestCase):
+    def test_remote_auth_failure_sets_flag_until_next_success(self):
+        remote_client = get_remote_client(remote_refresh_token=None)  # forces the otp path
+        remote_client.otp = MagicMock()
+        remote_client.otp.get_otp_code.side_effect = ConfigException("otp desynchronized")
+        with mock.patch.object(remote_client, "load_otp", return_value=False):
+            self.assertFalse(remote_client._refresh_remote_token())
+        self.assertTrue(remote_client.auth_failed)
+        remote_client.remoteCredentials = RemoteCredentials("remote_refresh_token")
+        self.assertTrue(remote_client._refresh_remote_token())
+        self.assertFalse(remote_client.auth_failed)
+
+    def test_manager_oauth_error_sets_flag(self):
+        from http import HTTPStatus
+
+        from oauth2_client.credentials_manager import OAuthError, ServiceInformation
+        from psacc.psa.oauth import OpenIdCredentialManager
+
+        manager = OpenIdCredentialManager(ServiceInformation("https://a", "https://t", "id", "secret", ["openid"]))
+        with mock.patch.object(manager, "_refresh_token", side_effect=OAuthError(HTTPStatus.UNAUTHORIZED, "invalid_grant", "")):
+            self.assertFalse(manager.refresh_token_now())
+        self.assertTrue(manager.auth_failed)
+        with mock.patch.object(manager, "_refresh_token"):
+            self.assertTrue(manager.refresh_token_now())
+        self.assertFalse(manager.auth_failed)

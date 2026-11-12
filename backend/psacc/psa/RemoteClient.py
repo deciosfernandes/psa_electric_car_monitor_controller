@@ -3,7 +3,7 @@ import logging
 import threading
 from datetime import datetime, timezone
 from os import environ
-from typing import Optional
+from typing import Callable, Optional
 
 import paho.mqtt.client as mqtt
 from requests import RequestException
@@ -74,6 +74,10 @@ class RemoteClient:
         self._lock = threading.Lock()
         self.update_thread: threading.Timer = None
         self.remote_token_last_update: Optional[datetime] = None
+        # True while the remote token / OTP session is unusable (the user must redo the login)
+        self.auth_failed = False
+        # called with each decoded vehicle event, on the paho network thread: callbacks must not block
+        self.on_event: list[Callable[[dict], None]] = []
 
     def __on_mqtt_connect(self, client, userdata, result_code, _):  # pylint: disable=unused-argument
         logger.info("Connected with result code %s", result_code)
@@ -115,12 +119,20 @@ class RemoteClient:
                 elif data["return_code"] != "0":
                     logger.error('mqtt error %s : %s', data["return_code"], data.get("reason", "?"))
             elif msg.topic.startswith(MQTT_EVENT_TOPIC):
-                programs = data["precond_state"].get("programs", None)
+                programs = (data.get("precond_state") or {}).get("programs")
                 if programs:
-                    self.precond_programs[data["vin"]] = data["precond_state"]["programs"]
+                    self.precond_programs[data["vin"]] = programs
                 self._store_lock_state(data)
+                self._dispatch_event(data)
         except KeyError:
             logger.exception("on_mqtt_message:")
+
+    def _dispatch_event(self, data: dict) -> None:
+        for callback in self.on_event:
+            try:
+                callback(data)
+            except Exception:
+                logger.exception("mqtt event callback failed")
 
     def _store_lock_state(self, data):
         # doors_state can be absent or explicitly null depending on the event
@@ -240,11 +252,16 @@ class RemoteClient:
                     self._get_remote_access_token(otp_code)
                 self.remote_token_last_update = datetime.now()
                 self.mqtt_client.username_pw_set("IMA_OAUTH_ACCESS_TOKEN", self.remoteCredentials.access_token)
+                self.auth_failed = False
                 return True
             except RateLimitException as e:
                 logger.error("Can't refresh remote token please wait... %s", e)
                 return False
-            except (RequestException, KeyError, AttributeError, RemoteException, ConfigException):
+            except (RemoteException, ConfigException):
+                logger.exception("Can't refresh remote token, please redo otp procedure")
+                self.auth_failed = True
+                return False
+            except (RequestException, KeyError, AttributeError):
                 logger.exception("Can't refresh remote token, please redo otp procedure")
                 return False
 

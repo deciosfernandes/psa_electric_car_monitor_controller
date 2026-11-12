@@ -1,4 +1,6 @@
 import logging
+import queue
+import threading
 from collections.abc import Callable
 
 import requests
@@ -42,3 +44,36 @@ class DiscordNotifier:
             logger.warning("Falha ao enviar notificação para o Discord: %s", type(exc).__name__)
             return False
         return True
+
+
+class QueuedNotifier:
+    """Delivers through ``inner`` on a daemon thread, so slow webhooks never block the engine or the poller.
+
+    Errors from ``inner`` are logged and dropped.
+    """
+
+    def __init__(self, inner):
+        self._inner = inner
+        self._queue: queue.Queue[tuple[str, str]] = queue.Queue()
+        threading.Thread(target=self._run, name="notifier", daemon=True).start()
+
+    def alert(self, msg: str) -> None:
+        self._queue.put(("alert", msg))
+
+    def info(self, msg: str) -> None:
+        self._queue.put(("info", msg))
+
+    def join(self) -> None:
+        """Block until every queued message was handled (tests)."""
+        self._queue.join()
+
+    def _run(self) -> None:
+        while True:
+            kind, msg = self._queue.get()
+            try:
+                getattr(self._inner, kind)(msg)
+            except Exception as exc:
+                # not logger.exception: the error text may embed the webhook URL (a secret)
+                logger.warning("notification failed: %s", type(exc).__name__)
+            finally:
+                self._queue.task_done()

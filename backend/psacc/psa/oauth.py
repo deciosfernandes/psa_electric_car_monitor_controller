@@ -36,6 +36,7 @@ class OpenIdCredentialManager(CredentialManager):
     def __init__(self, service_information: ServiceInformation, proxies: Optional[dict] = None):
         super().__init__(service_information, proxies)
         self.refresh_callbacks = []
+        self.auth_failed = False  # True after PSA rejected the refresh token (OAuthError): the user must log in again
         self.code_verifier = None
         self.redirect_uri = None
 
@@ -82,11 +83,13 @@ class OpenIdCredentialManager(CredentialManager):
             try:
                 self._refresh_token()
                 logger.info("access token refreshed")
+                self.auth_failed = False
                 for refresh_callback in self.refresh_callbacks:
                     refresh_callback()
                 return True
             except OAuthError as e:
                 logger.error("Can't refresh token: %s", e)
+                self.auth_failed = True
                 break
             except RequestException as e:
                 if attempt < max_attempts:
