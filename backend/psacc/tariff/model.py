@@ -80,6 +80,9 @@ class Tariff(BaseModel):
                 raise ValueError(f"{season.name}: faltam os dias {', '.join(missing)}")
             for d in DAY_TYPES:
                 _check_day(f"{season.name} / {DAY_LABELS[d]}", season.days[d])
+        periods = {slot.period for season in self.seasons for slots in season.days.values() for slot in slots}
+        if "vazio" not in periods:
+            raise ValueError("A tarifa tem de ter pelo menos um intervalo de vazio")  # nothing to charge in
         return self
 
     def season_for(self, month: int) -> Season:

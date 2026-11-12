@@ -301,13 +301,17 @@ def test_unplugged_abandons_round_without_alert():
     assert notifier.alerts == []
 
 
-def test_no_vazio_tariff_falls_back_to_midnight():
+def test_no_vazio_window_soon_falls_back_to_midnight():
     flat = [Slot(start=0, end=1440, period="cheias")]
+    summer = [Slot(start=0, end=420, period="vazio"), Slot(start=420, end=1440, period="cheias")]
     store.save_tariff(
         Tariff(
-            name="Simples",
+            name="Vazio só no verão",
             seasons=[
-                Season(name="Ano", months=list(range(1, 13)), days={"weekday": flat, "saturday": flat, "sunday": flat})
+                Season(name="Inverno", months=[11, 12, 1, 2, 3, 4, 5],
+                       days={"weekday": flat, "saturday": flat, "sunday": flat}),
+                Season(name="Verão", months=[6, 7, 8, 9, 10],
+                       days={"weekday": summer, "saturday": summer, "sunday": summer}),
             ],
         )
     )

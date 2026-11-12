@@ -391,3 +391,13 @@ def test_automation_and_tariff_changes_retick_engine(logged):
     assert len(ticks) == 2
     assert logged.post("/api/tariff/reset").status_code == 200
     assert len(ticks) == 3
+
+
+def test_put_tariff_without_vazio_is_422_pt(logged):
+    flat = [{"start": 0, "end": 1440, "period": "cheias"}]
+    body = {"name": "Simples", "seasons": [
+        {"name": "Ano", "months": list(range(1, 13)), "days": {"weekday": flat, "saturday": flat, "sunday": flat}}
+    ]}
+    r = logged.put("/api/tariff", json=body)
+    assert r.status_code == 422
+    assert r.json()["detail"] == "A tarifa tem de ter pelo menos um intervalo de vazio"

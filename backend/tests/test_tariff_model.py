@@ -97,3 +97,14 @@ def test_price_at_picks_latest_valid_from():
     assert t.price_at("vazio", date(2026, 1, 1)) == 0.12
     assert t.price_at("vazio", date(2024, 12, 31)) is None
     assert t.price_at("ponta", date(2026, 1, 1)) is None
+
+
+def test_rejects_tariff_without_any_vazio():
+    flat = day((0, 1440, "cheias"))
+    with pytest.raises(ValidationError, match="A tarifa tem de ter pelo menos um intervalo de vazio"):
+        make([Season(name="Ano", months=list(range(1, 13)), days={"weekday": flat, "saturday": flat, "sunday": flat})])
+
+
+def test_all_vazio_tariff_allowed():
+    flat = day((0, 1440, "vazio"))
+    make([Season(name="Ano", months=list(range(1, 13)), days={"weekday": flat, "saturday": flat, "sunday": flat})])
