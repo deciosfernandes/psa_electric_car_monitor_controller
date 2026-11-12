@@ -1,0 +1,24 @@
+doc-warnings: false
+max-line-length: 120
+autodetect: false
+uses:
+    - flask
+ignore-paths:
+  - tests
+  - psa_car_controller/psa/connected_car_api
+pycodestyle:
+  disable:
+    - E722
+pyflakes:
+  disable:
+   - F401
+pylint:
+  disable:
+    - fixme
+    - C0114
+    - C0115
+    - C0116
+    - W0603
+    - I0011
+    - W0511
+    - consider-using-f-string
