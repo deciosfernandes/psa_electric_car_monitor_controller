@@ -201,3 +201,27 @@ def test_wrong_typed_soc_becomes_none():
     raw = {"energies": [{"type": "Electric", "level": "n/a", "autonomy": [], "extension": {"electric": "x"}}]}
     snap = snapshot_from_status("VIN", VehicleStatus.model_validate(raw))
     assert snap.soc is None and snap.range_km is None and snap.plugged is None
+
+
+def test_snapshot_real_payload_extras():
+    snap = snapshot_from_status("VIN", load("status_real_2026_11.json"))
+    assert snap.mileage_km == 37255.7
+    assert snap.battery_health == 95
+    assert snap.position_at == datetime(2026, 11, 12, 14, 20, tzinfo=timezone.utc)
+
+
+def test_position_time_falls_back_to_status_time():
+    status = load("status_real_2026_11.json")
+    status.last_position.properties = None
+    snap = snapshot_from_status("VIN", status)
+    assert snap.position_at == snap.at
+
+
+def test_legacy_battery_health():
+    status = VehicleStatus.model_validate({"energy": [{"type": "Electric", "battery": {"health": {"resistance": 90}}}]})
+    assert snapshot_from_status("VIN", status).battery_health == 90
+
+
+def test_extras_missing_are_none():
+    snap = snapshot_from_status("VIN", VehicleStatus.model_validate({}))
+    assert (snap.mileage_km, snap.position_at, snap.battery_health) == (None, None, None)

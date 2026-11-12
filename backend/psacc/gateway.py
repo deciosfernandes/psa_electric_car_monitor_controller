@@ -33,6 +33,9 @@ class CarSnapshot:
     locked: bool | None
     precond_on: bool | None
     energy_at: datetime | None = None  # UTC, timestamp of the electric energy block (source of soc/charging)
+    mileage_km: float | None = None
+    position_at: datetime | None = None  # UTC, time of the position fix (status time if the car gives none)
+    battery_health: float | None = None  # % ("Vida útil da bateria")
 
 
 class CarGateway(Protocol):
@@ -85,6 +88,9 @@ def snapshot_from_status(vin: str, status: VehicleStatus) -> CarSnapshot:
     charge_status = charging.status if charging else None
     energy_at = (parse_psa_datetime(electric.updated_at) or parse_psa_datetime(electric.created_at)
                  if electric else None)
+    position_at = None
+    if position:
+        position_at = (parse_psa_datetime(position.properties.updated_at if position.properties else None) or at)
     return CarSnapshot(
         vin=vin,
         at=at,
@@ -100,6 +106,9 @@ def snapshot_from_status(vin: str, status: VehicleStatus) -> CarSnapshot:
         locked=_locked(status.doors_state.locked_states) if status.doors_state else None,
         precond_on=air_conditioning.status == "Enabled" if air_conditioning and air_conditioning.status else None,
         energy_at=energy_at,
+        mileage_km=status.odometer.mileage if status.odometer else None,
+        position_at=position_at,
+        battery_health=electric.health_resistance() if electric else None,
     )
 
 
