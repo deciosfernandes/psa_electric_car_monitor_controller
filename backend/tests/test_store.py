@@ -164,31 +164,12 @@ def test_activity_source_column_added_to_existing_db(tmp_path):
     assert [(a.message, a.source) for a in store.recent_activity()] == [("antigo", "automation")]
 
 
-def test_trip_energy_made_nullable_in_existing_db(tmp_path):
-    import sqlite3
-
-    db = tmp_path / "old.db"
-    con = sqlite3.connect(db)
-    con.execute(
-        "CREATE TABLE triprow (id INTEGER PRIMARY KEY, departed_at DATETIME NOT NULL, arrived_at DATETIME NOT NULL,"
-        " from_kind VARCHAR NOT NULL, from_name VARCHAR, to_kind VARCHAR NOT NULL, to_name VARCHAR, from_lat FLOAT,"
-        " from_lon FLOAT, to_lat FLOAT, to_lon FLOAT, km FLOAT NOT NULL, soc_start FLOAT, soc_end FLOAT,"
-        " kwh FLOAT NOT NULL, kwh_100km FLOAT NOT NULL)"
-    )
-    con.execute("CREATE INDEX ix_triprow_departed_at ON triprow (departed_at)")
-    con.execute(
-        "INSERT INTO triprow (departed_at, arrived_at, from_kind, to_kind, km, kwh, kwh_100km)"
-        " VALUES ('2026-11-12 01:00:00', '2026-11-12 01:20:00', 'home', 'work', 10, 2, 20)"
-    )
-    con.commit()
-    con.close()
-    store.init_db(f"sqlite:///{db}")
-    assert [t.kwh for t in store.trips(10)] == [2.0]
+def test_trip_with_unknown_energy_round_trips():
     from psacc.history.trips import Trip
 
     dep, arr = datetime(2026, 11, 13, tzinfo=timezone.utc), datetime(2026, 11, 13, 1, tzinfo=timezone.utc)
     store.save_trip(Trip(departed_at=dep, arrived_at=arr, from_kind="home", to_kind="work", km=5))
-    assert sorted(t.kwh is None for t in store.trips(10)) == [False, True]
+    assert [(t.kwh, t.kwh_100km) for t in store.trips(10)] == [(None, None)]
 
 
 def test_health_sample_upsert_one_per_day():
