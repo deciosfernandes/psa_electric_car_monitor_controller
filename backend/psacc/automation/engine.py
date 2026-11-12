@@ -151,6 +151,11 @@ class Engine:
                 return
             self.tick()
 
+    def close(self) -> None:
+        """Drop the round in flight (its timer is cancelled), e.g. before this engine is replaced."""
+        with self._lock:
+            self._cancel_round()
+
     def verify_now(self) -> None:
         """Advance the round in flight: verify the last command, re-send it or give up (timer callback)."""
         with self._lock:

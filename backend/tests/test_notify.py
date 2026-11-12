@@ -102,3 +102,15 @@ def test_queued_notifier_delivers_in_background_and_swallows_errors():
     queued.join()
     assert inner.sent == [("alert", "a"), ("info", "i")]
     assert threading.current_thread() not in inner.threads
+
+
+def test_queued_notifier_stop_ends_thread_after_queued_messages():
+    from psacc.notify import QueuedNotifier
+
+    inner = MagicMock()
+    queued = QueuedNotifier(inner)
+    queued.alert("a")
+    queued.stop()
+    queued._thread.join(timeout=5)
+    assert not queued._thread.is_alive()
+    inner.alert.assert_called_once_with("a")

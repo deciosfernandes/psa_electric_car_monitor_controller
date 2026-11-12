@@ -102,3 +102,14 @@ def test_tariff_defaults_to_preset_and_roundtrips():
     custom = EDA_TRI_SEMANAL.model_copy(update={"name": "Outro"})
     store.save_tariff(custom)
     assert store.get_tariff() == custom
+
+
+def test_init_db_creates_config_row_once():
+    # the row (and its random session secret) exists before any request, so concurrent first
+    # get_config() calls can never create two different secrets
+    with store._session() as s:
+        row = s.get(store.ConfigRow, 1)
+    assert row is not None
+    secret = AppConfig.model_validate_json(row.data).session_secret
+    assert secret
+    assert store.get_config().session_secret == secret

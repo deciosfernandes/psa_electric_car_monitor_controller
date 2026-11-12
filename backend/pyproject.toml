@@ -36,6 +36,8 @@ packages = ["psacc"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# starlette's TestClient wants the httpx2 fork; plain httpx still works
+filterwarnings = ["ignore:Using `httpx` with `starlette.testclient` is deprecated"]
 
 [tool.ruff]
 line-length = 120

@@ -1,0 +1,95 @@
+"""FastAPI application: wires the store, notifier, car runtime, API routes and the SPA.
+
+Run with ``uvicorn psacc.main:app``. Tests build their own app with ``create_app(db_url, gateway_factory)``.
+"""
+
+import logging
+import os
+from contextlib import asynccontextmanager
+from pathlib import Path
+
+from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.middleware.sessions import SessionMiddleware
+
+from . import setup_flow, store
+from .api import GatewayFactory, init_state, pt_detail, start_car, stop_car
+from .api import auth as auth_api
+from .api import automation as automation_api
+from .api import control as control_api
+from .api import setup as setup_api
+from .api import status as status_api
+from .auth import LoginRateLimiter, require_login
+from .notify import DiscordNotifier, QueuedNotifier
+
+logger = logging.getLogger(__name__)
+
+_login_required = Depends(require_login)
+
+
+class SpaStaticFiles(StaticFiles):
+    """Static files with the SPA fallback: unknown non-API paths serve ``index.html``."""
+
+    async def get_response(self, path: str, scope):
+        if scope["path"] == "/api" or scope["path"].startswith("/api/"):
+            raise HTTPException(404, "Não encontrado")  # never shadow API routes with the SPA
+        try:
+            return await super().get_response(path, scope)
+        except StarletteHTTPException as exc:  # what StaticFiles raises
+            if exc.status_code != 404:
+                raise
+        return await super().get_response("index.html", scope)
+
+
+def create_app(db_url: str | None = None, gateway_factory: GatewayFactory | None = None) -> FastAPI:
+    store.init_db(db_url)  # also creates the config row with the session secret, before any request
+    discord = DiscordNotifier(store.get_config)
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        notifier = QueuedNotifier(discord)
+        init_state(app, gateway_factory or setup_flow.load_gateway, notifier)
+        start_car(app)
+        try:
+            yield
+        finally:
+            with app.state.car_lock:
+                stop_car(app)
+            notifier.stop()
+
+    app = FastAPI(title="PSACC", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
+    app.state.discord = discord
+    app.state.login_limiter = LoginRateLimiter()
+    app.add_middleware(
+        SessionMiddleware, secret_key=store.get_config().session_secret, same_site="lax", https_only=False
+    )
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_error(_: Request, exc: RequestValidationError) -> JSONResponse:
+        return JSONResponse(status_code=422, content={"detail": pt_detail(list(exc.errors()))})
+
+    @app.get("/api/health")
+    def health() -> dict:
+        return {"ok": True}
+
+    app.include_router(auth_api.router)
+    for module in (status_api, automation_api, control_api, setup_api):
+        app.include_router(module.router, dependencies=[_login_required])
+
+    static_dir = os.environ.get("PSACC_STATIC_DIR")
+    if static_dir and Path(static_dir).is_dir():
+        app.mount("/", SpaStaticFiles(directory=static_dir, html=True), name="spa")
+    else:
+        logger.info("PSACC_STATIC_DIR not set or missing, not serving the SPA")
+    return app
+
+
+def __getattr__(name: str):
+    # ``psacc.main:app`` is built on first access, so importing this module (tests) never opens the real DB
+    if name == "app":
+        globals()["app"] = application = create_app()
+        return application
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

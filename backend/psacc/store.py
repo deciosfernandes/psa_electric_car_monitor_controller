@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from typing import Literal
 
 from pydantic import BaseModel, Field
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Field as SQLField
 from sqlmodel import Session, SQLModel, create_engine, select
@@ -97,6 +98,19 @@ def init_db(url: str | None = None) -> None:
         kwargs["poolclass"] = StaticPool
     _engine = create_engine(url, **kwargs)
     SQLModel.metadata.create_all(_engine)
+    _ensure_config()
+
+
+def _ensure_config() -> None:
+    """Create the config row (with its random session secret) if absent; a concurrent creator wins cleanly."""
+    with _session() as s:
+        if s.get(ConfigRow, 1) is not None:
+            return
+        s.add(ConfigRow(id=1, data=AppConfig().model_dump_json()))
+        try:
+            s.commit()
+        except IntegrityError:
+            s.rollback()  # another process/thread inserted it first: keep theirs
 
 
 def _session() -> Session:
@@ -106,13 +120,13 @@ def _session() -> Session:
 
 
 def get_config() -> AppConfig:
-    with _session() as s:
-        row = s.get(ConfigRow, 1)
-        if row:
-            return AppConfig.model_validate_json(row.data)
-    cfg = AppConfig()
-    save_config(cfg)
-    return cfg
+    for _ in range(2):
+        with _session() as s:
+            row = s.get(ConfigRow, 1)
+            if row:
+                return AppConfig.model_validate_json(row.data)
+        _ensure_config()  # only if the row was deleted behind our back
+    raise RuntimeError("config row could not be created")
 
 
 def save_config(cfg: AppConfig) -> None:

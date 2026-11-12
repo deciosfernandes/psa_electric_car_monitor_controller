@@ -410,3 +410,13 @@ def test_manual_charge_refused_when_unplugged():
     assert store.get_override() is None
     assert "Carga manual ignorada: cabo desligado" in messages()
     assert charge_calls(gw) == []
+
+
+def test_close_cancels_round_in_flight():
+    engine, gw, _, sched, _ = make()
+    engine.tick()
+    timer = sched.scheduled[-1][1]
+    engine.close()
+    assert timer.cancelled
+    engine.verify_now()  # nothing left to verify
+    assert len(charge_calls(gw)) == 1

@@ -54,8 +54,9 @@ class QueuedNotifier:
 
     def __init__(self, inner):
         self._inner = inner
-        self._queue: queue.Queue[tuple[str, str]] = queue.Queue()
-        threading.Thread(target=self._run, name="notifier", daemon=True).start()
+        self._queue: queue.Queue[tuple[str, str] | None] = queue.Queue()
+        self._thread = threading.Thread(target=self._run, name="notifier", daemon=True)
+        self._thread.start()
 
     def alert(self, msg: str) -> None:
         self._queue.put(("alert", msg))
@@ -63,13 +64,21 @@ class QueuedNotifier:
     def info(self, msg: str) -> None:
         self._queue.put(("info", msg))
 
+    def stop(self) -> None:
+        """Let the delivery thread exit once the messages queued so far were handled."""
+        self._queue.put(None)
+
     def join(self) -> None:
         """Block until every queued message was handled (tests)."""
         self._queue.join()
 
     def _run(self) -> None:
         while True:
-            kind, msg = self._queue.get()
+            item = self._queue.get()
+            if item is None:
+                self._queue.task_done()
+                return
+            kind, msg = item
             try:
                 getattr(self._inner, kind)(msg)
             except Exception as exc:
