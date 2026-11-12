@@ -761,3 +761,19 @@ def test_engine_charge_cost_covers_whole_session_and_keeps_price_override():
     assert done.ended_at is not None and done.soc_end == 55.0
     assert done.kwh == session_kwh(50, 55, 46) and done.cost_eur == pytest.approx(done.kwh * 0.5)
     assert store.charge_samples(sid)[-1].soc == 55.0
+
+
+def test_engine_records_trip_and_survives_trip_store_failure(monkeypatch):
+    base = snap(plugged=False, charging=False, soc=80.0, mileage_km=1000.0)
+    engine, *_ = make(base)
+    engine.on_status(base)
+    engine.on_status(dataclasses.replace(base, at=thu(19, 20), mileage_km=1010.0, soc=75.0))
+    engine.on_status(dataclasses.replace(base, at=thu(19, 40), mileage_km=1010.0, soc=75.0))
+    assert [t.km for t in store.trips(10)] == [10.0]
+
+    def boom(_):
+        raise RuntimeError("db")
+
+    monkeypatch.setattr(store, "save_trip", boom)
+    engine.on_status(dataclasses.replace(base, at=thu(20, 0), mileage_km=1020.0))
+    engine.on_status(dataclasses.replace(base, at=thu(20, 20), mileage_km=1020.0))  # logged, not raised

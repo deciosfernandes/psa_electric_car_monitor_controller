@@ -15,6 +15,7 @@ from sqlmodel import Session, SQLModel, create_engine, select
 from . import settings
 from .history.charges import ChargeSample, ChargeSession, session_kwh
 from .history.cost import session_cost
+from .history.trips import Trip
 from .places import Place, PositionFix
 from .tariff.model import Tariff
 from .tariff.presets import EDA_TRI_SEMANAL
@@ -133,6 +134,25 @@ class ChargeSampleRow(SQLModel, table=True):
     at: datetime
     soc: float
     rate_kmh: float | None = None
+
+
+class TripRow(SQLModel, table=True):
+    id: int | None = SQLField(default=None, primary_key=True)
+    departed_at: datetime = SQLField(index=True)
+    arrived_at: datetime
+    from_kind: str
+    from_name: str | None = None
+    to_kind: str
+    to_name: str | None = None
+    from_lat: float | None = None
+    from_lon: float | None = None
+    to_lat: float | None = None
+    to_lon: float | None = None
+    km: float
+    soc_start: float | None = None
+    soc_end: float | None = None
+    kwh: float
+    kwh_100km: float
 
 
 _engine = None
@@ -441,3 +461,22 @@ def set_session_price(session_id: int, eur_kwh: float | None) -> ChargeSession |
         s.refresh(row)
         c = _charge_session(row)
     return save_charge_session(recompute_session_cost(c))
+
+
+def _trip(row: TripRow) -> Trip:
+    return Trip(**{**row.model_dump(), "departed_at": _utc(row.departed_at), "arrived_at": _utc(row.arrived_at)})
+
+
+def save_trip(t: Trip) -> Trip:
+    with _session() as s:
+        row = s.merge(TripRow(**t.model_dump()))
+        s.commit()
+        s.refresh(row)
+        return _trip(row)
+
+
+def trips(limit: int, offset: int = 0) -> list[Trip]:
+    """Newest first."""
+    with _session() as s:
+        q = select(TripRow).order_by(TripRow.departed_at.desc()).offset(offset).limit(limit)
+        return [_trip(r) for r in s.exec(q).all()]

@@ -19,6 +19,7 @@ from typing import Callable, Literal, Protocol
 from .. import store
 from ..gateway import CarGateway, CarSnapshot
 from ..history.charges import ChargeDetector, ChargeEvent
+from ..history.trips import TripDetector
 from ..places import Place, Where, locate, update_fix
 from ..settings import TZ
 from ..store import LastCommand, Override, WorkEpisode
@@ -111,6 +112,7 @@ class Engine:
         self.last_where: Where | None = None
         self.last_place: Place | None = None
         self._charges: ChargeDetector | None = None  # built on first use (reads the open session from the store)
+        self._trips: TripDetector | None = None
         self._closed = False  # set by close(): every entry point becomes a no-op
         self._closing = threading.Event()
         # settle wait outside the lock; True means "closing, stop" (tests inject an instantaneous one)
@@ -139,6 +141,7 @@ class Engine:
             except Exception:
                 logger.exception("automation status handling failed")
             self._record_charges(snap)
+            self._record_trips(snap)
 
     def manual_charge(self) -> None:
         with self._lock:
@@ -245,6 +248,20 @@ class Engine:
                 self._persist_charge(ev)
         except Exception:
             logger.exception("charge session recording failed")
+
+    def _record_trips(self, snap: CarSnapshot) -> None:
+        """Feed the trip detector with the place computed by this snapshot's evaluation."""
+        try:
+            if self.last_where is None:
+                return
+            if self._trips is None:
+                self._trips = TripDetector(store.get_config().battery_capacity_kwh)
+            self._trips.capacity = store.get_config().battery_capacity_kwh  # editable setting
+            trip = self._trips.feed(snap, self.last_where, self.last_place)
+            if trip is not None:
+                store.save_trip(trip)
+        except Exception:
+            logger.exception("trip recording failed")
 
     @staticmethod
     def _persist_charge(ev: ChargeEvent) -> None:
