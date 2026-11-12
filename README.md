@@ -20,6 +20,15 @@ Personal web app to monitor and control a PSA/Stellantis electric car (tested wi
   - respects a battery limit (80 % by default);
   - merges back-to-back off-peak windows (e.g. Saturday 23:00 → Monday 07:00) with no commands at midnight;
   - verifies every command, retries, and alerts on failure.
+- **Location-aware automation** — named places (Casa/home, Trabalho/work, other; radius 25–2000 m, default 150 m).
+  Tariff rules apply only at home; at work the car is charged once per plug-in (free, battery limit ignored);
+  nothing is deferred elsewhere, and "Charge now" works everywhere. A position older than 60 min is only trusted
+  while the odometer shows the car has not moved.
+- **Charges (Cargas)** — charge sessions with energy and cost: home charges are split per tariff period, work
+  charges are free, other places use their own €/kWh price. Partial sessions (already charging when first seen)
+  are flagged.
+- **Trips (Viagens)** — trips derived from odometer changes between places, with approximate energy use.
+- **Consumption (Consumo)** — kWh/100 km for the last 30 days and per month.
 - **Editable tariff** — built-in "EDA tri-horário semanal" preset (summer June–October, winter November–May),
   weekly grid in 15-minute blocks, and per-period prices with an effective-from date.
 - **Controls** — "Charge now" (overrides the automation until the limit is reached or the cable is unplugged),
@@ -28,7 +37,8 @@ Personal web app to monitor and control a PSA/Stellantis electric car (tested wi
   start/stop.
 - **Portuguese (pt-PT) interface**, light and dark theme, 24-hour clock, `Atlantic/Azores` timezone.
 
-Charges, Trips and Consumption are shown as "Em breve" (coming soon).
+Battery capacity (default 46 kWh, usable) is editable and drives the energy and consumption figures. Battery
+health is shown as "Vida útil da bateria".
 
 ## Important warnings
 
