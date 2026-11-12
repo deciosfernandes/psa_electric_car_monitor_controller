@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
-"""Interactive spike: does "defer" stop an ongoing charge, and what is charging.nextDelayedTime?
+"""Interactive spike: does "defer" stop an ongoing charge, what is charging.nextDelayedTime, and in which
+timezone does the car read the program hour (Azores local time or UTC)?
 
+Mandatory once before trusting the automation (see psa/NOTES.md for what to look for).
 Run from backend/:  python scripts/spike_deferred.py
 Car must be plugged in and charging. Writes DATA_DIR/spike-report.json (tokens, VIN, ids, position stripped).
 Share that file with the developer afterwards.
@@ -8,7 +10,7 @@ Share that file with the developer afterwards.
 import json
 import sys
 import time
-from datetime import datetime
+from datetime import UTC, datetime
 from getpass import getpass
 from pathlib import Path
 
@@ -18,9 +20,12 @@ from psacc import settings, setup_flow, store  # noqa: E402
 from psacc.gateway import PsaGateway  # noqa: E402
 from psacc.psa.RemoteClient import MQTT_EVENT_TOPIC  # noqa: E402
 from psacc.psa.constants import BRAND  # noqa: E402
-from psacc.spike_report import find_keys, sanitize  # noqa: E402
+from psacc.settings import TZ  # noqa: E402
+from psacc.spike_report import find_keys, program_hour_ahead, sanitize  # noqa: E402
 
 WAIT_S = 90
+TZ_WATCH_S = 6 * 60  # how long to watch for the deferred charge to start after a timezone probe
+TZ_POLL_S = 60  # one wakeup per minute while watching
 PROGRAM_HOUR = (0, 10)
 last_mqtt: dict = {"event": None, "precond_state": None, "charging_state": None}
 
@@ -108,6 +113,49 @@ def run(gw: PsaGateway, report: dict) -> None:
     wait(WAIT_S)
     show(gw, "after charge (expect charging True)")
     report["reads"].append(raw_read(gw, "after charge"))
+
+    report["program_hour_timezone"] = timezone_test(gw)
+    print("Timezone verdict:", report["program_hour_timezone"]["verdict"])
+
+
+def probe(gw: PsaGateway, tz, label: str) -> dict:
+    """Defer with a program hour ~2 min ahead in `tz`; watch whether the car starts charging at that time."""
+    hour = program_hour_ahead(datetime.now(UTC), tz)
+    print(f"[{label}] sending defer, program hour {hour[0]:02d}:{hour[1]:02d} ({tz})")
+    result = {"tz": str(tz), "program_hour": f"{hour[0]:02d}:{hour[1]:02d}",
+              "accepted": gw.set_charge_mode("defer", hour), "timeline": [], "started": False}
+    deadline = time.monotonic() + TZ_WATCH_S
+    while time.monotonic() < deadline:
+        wait(TZ_POLL_S)
+        snap = gw.snapshot(refresh=True)
+        local = datetime.now(TZ).strftime("%H:%M:%S")
+        result["timeline"].append({"azores_time": local, "charging": snap.charging, "status": snap.charge_status})
+        print(f"  {local} Azores: charging={snap.charging} status={snap.charge_status}")
+        if snap.charging:
+            result["started"] = True
+            break
+    return result
+
+
+def timezone_test(gw: PsaGateway) -> dict:
+    """Is the program hour read in Azores local time or in UTC? (only distinguishable while they differ)"""
+    offset_h = datetime.now(TZ).utcoffset().total_seconds() / 3600
+    test = {"azores_utc_offset_h": offset_h, "probes": [], "verdict": "inconclusive"}
+    if offset_h == 0:
+        print("Azores is on UTC+0 now (summer time): local time and UTC are the same, timezone test skipped.")
+        test["verdict"] = "skipped (Azores = UTC now; rerun in winter)"
+        return test
+    print("\nTimezone test: the car should stop charging now and start again at the programmed time.")
+    local = probe(gw, TZ, "local")
+    test["probes"].append(local)
+    if local["started"]:
+        test["verdict"] = "local"
+        return test
+    utc = probe(gw, UTC, "utc")
+    test["probes"].append(utc)
+    if utc["started"]:
+        test["verdict"] = "utc"
+    return test
 
 
 def main() -> int:

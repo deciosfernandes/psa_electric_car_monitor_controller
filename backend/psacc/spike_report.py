@@ -1,9 +1,19 @@
 """Helpers for the spike report: strip anything personal before the owner shares it."""
 import re
+from datetime import datetime, timedelta, tzinfo
 
 # substring match, or exact key for the short ones that would otherwise hit unrelated names
 SENSITIVE_KEY = re.compile(r"token|secret|password|customer|position|latitude|longitude|geometry|coordinates"
+                           r"|location|gps|address|latlng|vin_?number"
                            r"|^(vin|lat|lon|lng)$|[a-z_]vin$", re.I)
+
+
+def program_hour_ahead(now: datetime, tz: tzinfo, minutes: int = 2) -> tuple[int, int]:
+    """(hour, minute) in `tz` at least `minutes` after `now`, rounded up to a whole minute."""
+    target = (now + timedelta(minutes=minutes)).astimezone(tz)
+    if target.second or target.microsecond:
+        target = target.replace(second=0, microsecond=0) + timedelta(minutes=1)
+    return target.hour, target.minute
 
 
 def _replace(text: str, secrets: dict[str, str]) -> str:

@@ -25,3 +25,33 @@ def test_sanitize_rest_and_mqtt_shapes():
         assert leak not in out
     assert "PT22H30M" in out and "Enabled" in out  # useful data survives
     assert "/user/vehicles/VEHICLE_ID/status" in out
+
+
+def test_sanitize_location_like_keys():
+    data = {
+        "lastLocation": {"name": "Casa"},
+        "GPS_fix": "38.1,-27.1",
+        "homeAddress": "Rua X 1",
+        "latLng": [38.1, -27.1],
+        "LATLNG": "38.1,-27.1",
+        "vinNumber": "VF3OTHERVIN000002",
+        "VINNumber": "VF3OTHERVIN000002",
+        "charging": {"status": "InProgress"},
+    }
+    out = sanitize(data, {})
+    assert out["charging"] == {"status": "InProgress"}
+    for key in data:
+        if key != "charging":
+            assert out[key] == "REDACTED", key
+
+
+def test_program_hour_ahead_rounds_up_in_local_time():
+    from datetime import UTC, datetime
+
+    from psacc.settings import TZ
+    from psacc.spike_report import program_hour_ahead
+
+    now = datetime(2026, 11, 12, 12, 0, 30, tzinfo=UTC)  # 11h00:30 in the Azores (UTC-1 in winter)
+    assert program_hour_ahead(now, TZ) == (11, 3)
+    assert program_hour_ahead(now, UTC) == (12, 3)
+    assert program_hour_ahead(datetime(2026, 11, 12, 0, 58, tzinfo=UTC), UTC) == (1, 0)

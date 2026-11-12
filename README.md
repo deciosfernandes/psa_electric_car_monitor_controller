@@ -12,6 +12,11 @@ e automatizar o carregamento de acordo com a tarifa EDA (tri-horário semanal, A
 
 Cargas, Viagens e Consumo mostram "Em breve".
 
+> **Obrigatório antes de confiar na automação:** execute uma vez o script de diagnóstico
+> `backend/scripts/spike_deferred.py` (ver [Script de diagnóstico](#script-de-diagnóstico-spike)). Ele confirma
+> que o adiamento interrompe a carga e em que fuso horário o carro lê a hora programada; até lá a automação
+> pode iniciar a carga à hora errada.
+
 > **Segurança:** a aplicação não deve ser exposta à Internet. Mantenha-a na rede local (LAN); tem apenas uma
 > palavra-passe única e controla um veículo real.
 
@@ -28,8 +33,9 @@ Abra `http://<servidor>:5000`.
 1. Defina a palavra-passe (primeiro acesso).
 2. **Definições** → ligar a conta PSA (e-mail e palavra-passe da conta Peugeot).
 3. Introduza o código recebido por SMS e o PIN da aplicação.
-4. Em **Definições**, defina os preços EDA (o preset "EDA tri-horário semanal" pode ser editado).
-5. Em **Automação**, confirme o desfasamento (10 min), o limite de bateria (80 %) e que a automação está ligada.
+4. Em **Automação**, defina os preços EDA (o preset "EDA tri-horário semanal" pode ser editado) e confirme o
+   desfasamento (10 min), o limite de bateria (80 %) e que a automação está ligada.
+5. Execute o script de diagnóstico (abaixo) uma vez, antes de confiar na automação.
 
 ### Onde ficam os dados
 
@@ -54,7 +60,7 @@ cd backend
 python -m venv .venv
 .venv/Scripts/pip install -e '.[dev]'      # Linux/macOS: .venv/bin/pip
 .venv/Scripts/python -m pytest -q
-.venv/Scripts/python -m ruff check psacc --exclude psacc/psa/connected_car_api
+.venv/Scripts/python -m ruff check psacc tests
 PSACC_FAKE=1 .venv/Scripts/python -m uvicorn psacc.main:app --port 8000
 ```
 
@@ -73,8 +79,11 @@ npm run build
 
 ### Script de diagnóstico (spike)
 
-Execute **uma vez**, com o carro ligado à tomada e a carregar, para confirmar como a API trata o adiamento
-do carregamento e o significado de `charging.nextDelayedTime`:
+**Obrigatório**: execute **uma vez**, com o carro ligado à tomada e a carregar, antes de confiar na
+automação. Confirma como a API trata o adiamento do carregamento, o significado de `charging.nextDelayedTime`
+e se o carro lê a hora programada em hora local dos Açores ou em UTC (teste feito com uma hora programada
+~2 min à frente; só é conclusivo no horário de inverno, quando os Açores estão em UTC-1). Demora cerca de
+15 min.
 
 ```bash
 cd backend
@@ -82,7 +91,9 @@ cd backend
 .venv/Scripts/python scripts/spike_deferred.py
 ```
 
-Escreve `spike-report.json` (sem tokens, VIN nem posição) na pasta de dados.
+Escreve `spike-report.json` (sem tokens, VIN nem posição) na pasta de dados. O que verificar no relatório
+está em `backend/psacc/psa/NOTES.md`; se o veredicto do fuso horário for `utc`, a automação não deve ser
+usada até a hora programada ser corrigida.
 
 ## Licença
 
