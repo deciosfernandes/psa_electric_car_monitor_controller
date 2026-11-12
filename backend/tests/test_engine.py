@@ -553,3 +553,18 @@ def test_verification_abandoned_when_closing_during_settle():
     assert gw.reads == [True]  # no judgement on the unsettled read, no retry
     assert store.get_last_command().verified is False
     assert len(charge_calls(gw)) == 1
+
+
+def test_replug_flag_cleared_when_evaluation_returns_early():
+    """R6: a re-plug seen while nothing can be decided (state unknown) does not force a resend later."""
+    engine, gw, notifier, sched, clock = make(car=snap(plugged=True, charging=False, soc=50.0), apply_effect=True)
+    engine.on_status(gw.snap)
+    engine.verify_now()
+    gw.snap = snap(plugged=False, charging=False, charge_status="Disconnected")
+    engine.on_status(gw.snap)
+    gw.snap = snap(plugged=True, charging=False, charge_status="Stopped", soc=None)
+    engine.on_status(gw.snap)  # plugged back in, battery unknown: decide() returns no mode
+    assert len(charge_calls(gw)) == 1
+    gw.snap = snap(plugged=True, charging=False, charge_status="Stopped", soc=50.0)
+    engine.on_status(gw.snap)  # same vazio program, verified, not charging: nothing to send
+    assert len(charge_calls(gw)) == 1

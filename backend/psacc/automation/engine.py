@@ -221,6 +221,8 @@ class Engine:
         self._plugged = snap.plugged
 
     def _evaluate(self, car: CarSnapshot) -> None:
+        # a re-plug forces one command on this evaluation only, also when it returns early (no lingering resend)
+        replugged, self._replugged = self._replugged, False
         now = self._clock()
         cfg = store.get_config()
         override = store.get_override()
@@ -247,8 +249,7 @@ class Engine:
                 return  # already being enforced
             self._cancel_round()
         last = store.get_last_command()
-        if self._replugged or self._needs_command(decision.mode, car, last, now):
-            self._replugged = False
+        if replugged or self._needs_command(decision.mode, car, last, now):
             self._start_round(decision, last)
 
     def verification_pending(self) -> bool:
