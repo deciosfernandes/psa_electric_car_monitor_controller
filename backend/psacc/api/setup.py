@@ -7,6 +7,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field, field_validator
 
 from .. import setup_flow, store
+from ..psa.constants import BRAND
 from ..psa.otp.otp import otp_path
 from . import NO_PSA, start_car
 
@@ -20,6 +21,13 @@ class LoginIn(BaseModel):
     email: str
     password: str
     country: str
+
+    @field_validator("app_name")
+    @classmethod
+    def _known_app(cls, v: str) -> str:
+        if v not in BRAND:
+            raise ValueError("Aplicação desconhecida")
+        return v
 
 
 class CodeIn(BaseModel):

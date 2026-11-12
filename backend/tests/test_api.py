@@ -363,3 +363,18 @@ def test_spa_fallback_does_not_shadow_api(tmp_path, monkeypatch):
         assert "spa" in c.get("/automacao").text
         assert c.get("/api/nao-existe").status_code == 404
         assert c.get("/api/health").json() == {"ok": True, "fake": False}
+
+
+def test_setup_login_requires_package_name(logged, monkeypatch):
+    from psacc import setup_flow
+
+    seen = []
+    monkeypatch.setattr(setup_flow, "start_login", lambda *a: seen.append(a) or setup_flow.LoginResult(ok=False))
+    body = {"app_name": "MyPeugeot", "email": "a@b.pt", "password": "pw", "country": "PT"}
+    r = logged.post("/api/setup/login", json=body)
+    assert r.status_code == 422
+    assert "Aplicação desconhecida" in r.text
+    assert seen == []
+    r = logged.post("/api/setup/login", json={**body, "app_name": "com.psa.mym.mypeugeot"})
+    assert r.status_code == 200
+    assert seen[0][0] == "com.psa.mym.mypeugeot"

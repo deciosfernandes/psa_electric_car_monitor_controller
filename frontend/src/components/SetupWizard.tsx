@@ -13,7 +13,14 @@ interface LoginResult {
   error: string | null
 }
 
-const APPS = ['MyPeugeot', 'MyCitroen', 'MyDS', 'MyOpel', 'MyVauxhall']
+// value = Android package name (backend BRAND key), label = app name
+const APPS = [
+  { value: 'com.psa.mym.mypeugeot', label: 'MyPeugeot' },
+  { value: 'com.psa.mym.mycitroen', label: 'MyCitroen' },
+  { value: 'com.psa.mym.myds', label: 'MyDS' },
+  { value: 'com.psa.mym.myopel', label: 'MyOpel' },
+  { value: 'com.psa.mym.myvauxhall', label: 'MyVauxhall' },
+]
 const errorText = (e: unknown) => (e instanceof Error ? e.message : 'Erro inesperado')
 
 function Err({ message }: { message: string | null }) {
@@ -32,7 +39,7 @@ export function SetupWizard() {
   const [reconfigure, setReconfigure] = useState(false)
   const [manualUrl, setManualUrl] = useState<string | null>(null)
   const [note, setNote] = useState<string | null>(null)
-  const [form, setForm] = useState({ app_name: 'MyPeugeot', email: '', password: '', country: 'PT' })
+  const [form, setForm] = useState({ app_name: APPS[0].value, email: '', password: '', country: 'PT' })
   const [code, setCode] = useState('')
   const [sms, setSms] = useState('')
   const [pin, setPin] = useState('')
@@ -128,7 +135,9 @@ export function SetupWizard() {
             Aplicação
             <select className="field mt-1" value={form.app_name} onChange={(e) => setForm({ ...form, app_name: e.target.value })}>
               {APPS.map((a) => (
-                <option key={a}>{a}</option>
+                <option key={a.value} value={a.value}>
+                  {a.label}
+                </option>
               ))}
             </select>
           </label>

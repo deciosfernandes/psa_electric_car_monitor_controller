@@ -38,6 +38,18 @@ describe('SetupWizard', () => {
     expect(screen.getByLabelText('Código')).toBeTruthy()
   })
 
+  it('posts the app package name, not the label', async () => {
+    mockApi(notConnected, { ok: true, manual_url: null, error: null })
+    fireEvent.change(await screen.findByLabelText('Email da conta'), { target: { value: 'a@b.pt' } })
+    fireEvent.change(screen.getByLabelText('Palavra-passe da conta'), { target: { value: 'pw' } })
+    expect(screen.getByRole('option', { name: 'MyPeugeot' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Iniciar sessão' }))
+    const fetchMock = vi.mocked(fetch)
+    await waitFor(() => expect(fetchMock.mock.calls.some(([p]) => p === '/api/setup/login')).toBe(true))
+    const [, init] = fetchMock.mock.calls.find(([p]) => p === '/api/setup/login')!
+    expect(JSON.parse(String(init?.body)).app_name).toBe('com.psa.mym.mypeugeot')
+  })
+
   it('does not render a non-https manual link', async () => {
     mockApi(notConnected, { ok: false, manual_url: 'javascript:alert(1)', error: 'x' })
     fireEvent.change(await screen.findByLabelText('Email da conta'), { target: { value: 'a@b.pt' } })
