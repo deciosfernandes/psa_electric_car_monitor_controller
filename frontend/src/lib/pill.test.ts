@@ -5,10 +5,10 @@ import { pillState } from './pill'
 const car: CarSnapshot = {
   vin: 'X', at: '2026-11-12T00:00:00-01:00', soc: 50, range_km: 100, plugged: true, charging: false,
   charge_status: 'Stopped', charge_rate_kmh: 0, next_delayed_time: null, latitude: null, longitude: null,
-  locked: true, precond_on: false,
+  locked: true, precond_on: false, mileage_km: null, battery_health: null,
 }
 const status = (over: Partial<Status> = {}, c: Partial<CarSnapshot> = {}): Status => ({
-  car: { ...car, ...c }, period: 'vazio', next_event: null,
+  car: { ...car, ...c }, where: 'home', place_name: null, paused_reason: null, mileage_km: null, position_age_min: null, period: 'vazio', next_event: null,
   automation: { enabled: true, offset_min: 10, battery_limit: 80 },
   override: null, last_command: null, mqtt_connected: true, psa_connected: true, updated_at: '2026-11-12T00:00:00-01:00', ...over,
 })

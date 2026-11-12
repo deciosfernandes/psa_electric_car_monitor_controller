@@ -37,8 +37,17 @@ class Charging(_Model):
     schedule: Any = None  # spec: object with programs; real cars: also []
 
 
+class _BatteryHealth(_Model):
+    resistance: Lenient[float] = None  # % ("Vida útil da bateria")
+
+
+class _Battery(_Model):
+    health: Lenient[_BatteryHealth] = None
+
+
 class _ElectricExtension(_Model):
     charging: Lenient[Charging] = None
+    battery: Lenient[_Battery] = None
 
 
 class _EnergyExtension(_Model):
@@ -53,18 +62,37 @@ class Energy(_Model):
     created_at: Lenient[str] = Field(None, alias="createdAt")
     charging: Lenient[Charging] = None  # legacy (deprecated `energy`) location
     extension: Lenient[_EnergyExtension] = None  # v4.15.1+ location: extension.electric.charging
+    battery: Lenient[_Battery] = None  # legacy location of battery.health
 
     def charging_info(self) -> Charging | None:
         ext = self.extension.electric.charging if self.extension and self.extension.electric else None
         return ext or self.charging
+
+    def health_resistance(self) -> float | None:
+        ext = self.extension.electric.battery if self.extension and self.extension.electric else None
+        for battery in (ext, self.battery):
+            if battery and battery.health and battery.health.resistance is not None:
+                return battery.health.resistance
+        return None
 
 
 class _Geometry(_Model):
     coordinates: Lenient[list[Lenient[float]]] = None
 
 
+class _PositionProperties(_Model):
+    updated_at: Lenient[str] = Field(None, alias="updatedAt")
+
+
 class _Position(_Model):
     geometry: Lenient[_Geometry] = None
+    properties: Lenient[_PositionProperties] = None
+
+
+class _Odometer(_Model):
+    mileage: Lenient[float] = None
+    created_at: Lenient[str] = Field(None, alias="createdAt")
+    updated_at: Lenient[str] = Field(None, alias="updatedAt")
 
 
 class _DoorsState(_Model):
@@ -84,6 +112,7 @@ class VehicleStatus(_Model):
     energy: Lenient[list[Lenient[Energy]]] = None  # deprecated since v4.10.1
     last_position: Lenient[_Position] = Field(None, alias="lastPosition")
     doors_state: Lenient[_DoorsState] = Field(None, alias="doorsState")
+    odometer: Lenient[_Odometer] = None
     preconditioning: Lenient[_Preconditioning] = None
     preconditionning: Lenient[_Preconditioning] = None  # deprecated spelling
     updated_at: Lenient[str] = Field(None, alias="updatedAt")

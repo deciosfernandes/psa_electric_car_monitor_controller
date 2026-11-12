@@ -1,0 +1,128 @@
+{
+  "createdAt": "2026-11-12T14:42:44Z",
+  "updatedAt": "2026-11-12T14:42:44Z",
+  "lastPosition": {
+    "type": "Feature",
+    "geometry": {
+      "type": "Point",
+      "coordinates": [
+        -25.67,
+        37.74,
+        0
+      ]
+    },
+    "properties": {
+      "updatedAt": "2026-11-12T14:20:00Z",
+      "heading": 0,
+      "type": "Inferred"
+    }
+  },
+  "ignition": {
+    "createdAt": "2026-11-12T14:28:59Z",
+    "type": "Stop"
+  },
+  "battery": {
+    "voltage": 83.5,
+    "createdAt": "2026-11-12T14:28:59Z"
+  },
+  "privacy": {
+    "createdAt": "2026-11-12T14:42:44Z",
+    "state": "None"
+  },
+  "service": {
+    "createdAt": "2026-11-12T14:42:37Z",
+    "type": "Electric"
+  },
+  "environment": {
+    "luminosity": {
+      "createdAt": "2026-11-12T14:28:59Z",
+      "day": false
+    },
+    "air": {
+      "createdAt": "2026-11-12T14:28:59Z",
+      "temp": 17.5
+    }
+  },
+  "odometer": {
+    "createdAt": "2026-11-12T14:28:59Z",
+    "mileage": 37255.7
+  },
+  "kinetic": {
+    "createdAt": "2026-05-30T20:39:30Z",
+    "speed": 0.0,
+    "moving": false
+  },
+  "preconditioning": {
+    "airConditioning": {
+      "createdAt": "2026-10-04T13:22:45Z",
+      "updatedAt": "2026-10-04T13:22:45Z",
+      "status": "Disabled"
+    }
+  },
+  "energies": [
+    {
+      "createdAt": "2026-11-12T14:42:37Z",
+      "type": "Electric",
+      "subType": "ElectricEnergy",
+      "level": 51.0,
+      "autonomy": 150,
+      "extension": {
+        "electric": {
+          "battery": {
+            "load": {
+              "createdAt": "2026-11-12T14:42:37Z",
+              "capacity": 33600,
+              "residual": 14656
+            },
+            "health": {
+              "createdAt": "2026-11-12T14:42:37Z",
+              "resistance": 95
+            }
+          },
+          "charging": {
+            "plugged": true,
+            "status": "InProgress",
+            "remainingTime": "PT10H30M",
+            "chargingRate": 28,
+            "chargingMode": "Slow",
+            "nextDelayedTime": "PT10M",
+            "schedule": []
+          }
+        }
+      }
+    }
+  ],
+  "preconditionning": {
+    "airConditioning": {
+      "createdAt": "2026-10-04T13:22:45Z",
+      "updatedAt": "2026-10-04T13:22:45Z",
+      "status": "Disabled"
+    }
+  },
+  "energy": [
+    {
+      "createdAt": "2026-11-12T14:42:37Z",
+      "updatedAt": "2026-11-12T14:42:37Z",
+      "type": "Electric",
+      "level": 51.0,
+      "autonomy": 150,
+      "charging": {
+        "plugged": true,
+        "status": "InProgress",
+        "remainingTime": "PT10H30M",
+        "chargingRate": 28,
+        "chargingMode": "Slow",
+        "nextDelayedTime": "PT10M"
+      },
+      "battery": {
+        "load": {
+          "capacity": 33600,
+          "residual": 14656
+        },
+        "health": {
+          "resistance": 95
+        }
+      }
+    }
+  ]
+}

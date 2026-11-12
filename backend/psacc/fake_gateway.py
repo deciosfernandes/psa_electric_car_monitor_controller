@@ -8,7 +8,8 @@ from psacc.gateway import CarSnapshot
 def default_snapshot(vin: str = "FAKEVIN") -> CarSnapshot:
     return CarSnapshot(vin=vin, at=datetime.now(timezone.utc), soc=50.0, range_km=100.0, plugged=True,
                        charging=False, charge_status="Stopped", charge_rate_kmh=0, next_delayed_time="PT22H30M",
-                       latitude=37.74, longitude=-25.67, locked=True, precond_on=False)
+                       latitude=37.74, longitude=-25.67, locked=True, precond_on=False,
+                       mileage_km=37255.7, position_at=datetime.now(timezone.utc), battery_health=95.0)
 
 
 class FakeGateway:

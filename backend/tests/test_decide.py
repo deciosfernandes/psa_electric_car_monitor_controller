@@ -61,3 +61,44 @@ def test_vazio_charges():
 def test_cheias_defers():
     d = run(at(12))
     assert d.mode == "defer" and "cheias" in d.reason
+
+
+def run_at(where, now=None, c=None, override=None, work_charge_sent=False):
+    return decide(now or at(19), CFG, EDA_TRI_SEMANAL, c or car(), override, where, work_charge_sent)
+
+
+def test_decide_no_home_place():
+    assert run_at("unset", at(1)) == Decision(None, "Defina o local Casa")
+
+
+def test_decide_unknown_position():
+    assert run_at("unknown", at(1)) == Decision(None, "Posição do carro desconhecida")
+
+
+def test_decide_work_charge_once():
+    assert run_at("work") == Decision("charge", "Carga no Trabalho")
+    # battery limit and tariff ignored: work charging is free
+    assert run_at("work", at(12), car(soc=95)) == Decision("charge", "Carga no Trabalho")
+    assert run_at("work", work_charge_sent=True) == Decision(None, "No Trabalho (carga já pedida)")
+    assert run_at("work", override=OVR) == Decision("charge", "Carga no Trabalho")
+
+
+def test_decide_other_place_no_command():
+    assert run_at("other", at(1)) == Decision(None, "Fora de Casa")
+    assert run_at("other", at(1), car(soc=90)) == Decision(None, "Fora de Casa")  # never defer outside Casa
+
+
+def test_decide_other_place_manual_override_charges():
+    assert run_at("other", override=OVR) == Decision("charge", "Carga manual ativa")
+
+
+def test_decide_location_checked_after_unplugged_and_unknown_state():
+    assert run_at("work", c=car(plugged=False), override=OVR) == Decision(None, "Cabo desligado", True)
+    assert run_at("unset", c=car(soc=None)) == Decision(None, "Estado do carro desconhecido")
+
+
+def test_decide_manual_override_charges_everywhere():
+    for where in ("unset", "unknown", "other"):
+        assert run_at(where, at(12), car(soc=95), override=OVR) == Decision("charge", "Carga manual ativa"), where
+    assert run_at("work", override=OVR, work_charge_sent=True) == Decision("charge", "Carga manual ativa")
+    assert run_at("unknown", c=car(plugged=False), override=OVR) == Decision(None, "Cabo desligado", True)

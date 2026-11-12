@@ -10,6 +10,7 @@ from psacc import settings, store
 from psacc.auth import FAILURE_WINDOW_S, MAX_FAILURES, LoginRateLimiter
 from psacc.fake_gateway import FakeGateway, default_snapshot
 from psacc.main import CSRF_HEADER, create_app
+from psacc.places import Place
 from psacc.tariff.schedule import planned_events
 
 PASSWORD = "segredo123"
@@ -190,13 +191,30 @@ def test_status_shape(logged):
         "mqtt_connected",
         "psa_connected",
         "updated_at",
+        "where",
+        "place_name",
+        "mileage_km",
+        "position_age_min",
+        "paused_reason",
     }
+    assert body["paused_reason"] == "Posição do carro desconhecida" or body["paused_reason"] == "Defina o local Casa"
+    assert body["where"] in ("unset", "unknown")  # no snapshot evaluated yet
+    assert body["place_name"] is None
     assert body["period"] in ("vazio", "cheias", "ponta")
     assert body["automation"] == {"enabled": True, "offset_min": 10, "battery_limit": 80}
     assert body["mqtt_connected"] is True
     assert body["next_event"]["action"] in ("charge", "defer")
     assert datetime.fromisoformat(body["next_event"]["at"]).utcoffset() is not None
     assert datetime.fromisoformat(body["updated_at"]).utcoffset() is not None
+
+
+def test_status_paused_reason(logged):
+    engine = logged.app.state.poller.engine
+    engine.last_where = "home"
+    assert logged.get("/api/status").json()["paused_reason"] is None
+    engine.last_where = "other"
+    engine.last_place = Place(name="Lagoa", kind="other", lat=1.0, lon=1.0)
+    assert logged.get("/api/status").json()["paused_reason"] == "Fora de Casa (Lagoa)"
 
 
 def test_status_serialises_car(logged, monkeypatch):
@@ -293,7 +311,12 @@ def test_settings_hide_webhook(logged):
     )
     assert r.status_code == 200
     body = logged.get("/api/settings").json()
-    assert body == {"discord_webhook_set": True, "discord_info": True, "refresh_min": 10}
+    assert body == {
+        "discord_webhook_set": True,
+        "discord_info": True,
+        "refresh_min": 10,
+        "battery_capacity_kwh": 46,
+    }
     assert "discord.example" not in r.text
 
 
@@ -410,3 +433,185 @@ def test_control_command_activity_is_tagged_control(logged):
     logged.post("/api/control/horn")
     latest = logged.get("/api/activity").json()[0]
     assert (latest["kind"], latest["source"]) == ("error", "control")
+
+
+PLACE = {"name": "Casa", "kind": "home", "lat": 10.0, "lon": 20.0}
+
+
+def test_places_require_login(client):
+    assert client.get("/api/places").status_code == 401
+
+
+def test_places_crud(logged):
+    assert logged.get("/api/places").json() == []
+    home = logged.post("/api/places", json=PLACE).json()
+    assert home["id"] and home["radius_m"] == 150 and home["price_eur_kwh"] is None
+    other = logged.post(
+        "/api/places", json={"name": "Ginásio", "kind": "other", "lat": 11, "lon": 20, "price_eur_kwh": 0.15}
+    ).json()
+    assert [p["id"] for p in logged.get("/api/places").json()] == [home["id"], other["id"]]
+    r = logged.put(f"/api/places/{home['id']}", json={**PLACE, "name": "Casa nova", "radius_m": 300})
+    assert r.status_code == 200 and r.json()["name"] == "Casa nova" and r.json()["id"] == home["id"]
+    assert logged.put("/api/places/999", json=PLACE).status_code == 404
+    assert logged.delete(f"/api/places/{other['id']}").status_code == 200
+    assert logged.delete(f"/api/places/{other['id']}").status_code == 404
+    assert len(logged.get("/api/places").json()) == 1
+
+
+def test_places_validation_and_second_home_422_pt(logged):
+    r = logged.post("/api/places", json={**PLACE, "radius_m": 5})
+    assert r.status_code == 422 and "Raio" in r.json()["detail"]
+    r = logged.post("/api/places", json={**PLACE, "price_eur_kwh": 0.2})
+    assert r.status_code == 422 and "Preço" in r.json()["detail"]
+    assert logged.post("/api/places", json=PLACE).status_code == 200
+    r = logged.post("/api/places", json={**PLACE, "name": "Outra"})
+    assert r.status_code == 422 and "casa" in r.json()["detail"]
+
+
+def test_places_from_car(logged):
+    r = logged.post("/api/places/from-car", json={"name": "Trabalho", "kind": "work"})
+    assert r.status_code == 409 and r.json()["detail"] == "Posição do carro desconhecida"
+    store.set_position_fix(store.PositionFix(lat=10.5, lon=20.5, at=datetime.now(timezone.utc), mileage_km=1.0))
+    r = logged.post("/api/places/from-car", json={"name": "Trabalho", "kind": "work"})
+    assert r.status_code == 200
+    assert (r.json()["lat"], r.json()["lon"], r.json()["kind"]) == (10.5, 20.5, "work")
+
+
+def test_places_from_car_rejects_stale_fix(logged, monkeypatch):
+    old = datetime.now(timezone.utc) - timedelta(hours=3)
+    store.set_position_fix(store.PositionFix(lat=10.5, lon=20.5, at=old, mileage_km=100.0))
+    body = {"name": "Casa", "kind": "home"}
+    for mileage in (None, 150.0):  # odometer unknown or moved: the stored fix no longer holds
+        snap = dataclasses.replace(default_snapshot("V"), mileage_km=mileage)
+        monkeypatch.setattr(logged.app.state.poller, "latest", lambda snap=snap: snap)
+        r = logged.post("/api/places/from-car", json=body)
+        assert r.status_code == 409 and r.json()["detail"] == "Posição do carro desatualizada"
+    monkeypatch.setattr(
+        logged.app.state.poller, "latest", lambda: dataclasses.replace(default_snapshot("V"), mileage_km=100.0)
+    )
+    assert logged.post("/api/places/from-car", json=body).status_code == 200  # odometer unchanged: still valid
+
+
+def test_consumption_ignores_trips_with_unknown_energy(logged):
+    from psacc.history.trips import Trip
+
+    now = datetime.now(timezone.utc)
+    for km, kwh in ((10.0, 2.0), (50.0, None)):
+        store.save_trip(
+            Trip(departed_at=now - timedelta(hours=2), arrived_at=now - timedelta(hours=1), from_kind="home",
+                 to_kind="work", km=km, kwh=kwh, kwh_100km=None if kwh is None else kwh / km * 100)
+        )
+    c = logged.get("/api/consumption").json()["last30"]
+    assert c["km"] == 10.0 and c["kwh"] == 2.0 and c["kwh_100km"] == pytest.approx(20.0)
+    assert sorted(t["kwh"] is None for t in logged.get("/api/trips").json()) == [False, True]
+
+
+def test_settings_capacity_range_and_keep(logged):
+    base = {"discord_info": False, "refresh_min": 5}
+    for bad in (9.9, 150.1):
+        assert logged.put("/api/settings", json={**base, "battery_capacity_kwh": bad}).status_code == 422
+    assert logged.put("/api/settings", json={**base, "battery_capacity_kwh": 50}).json()["battery_capacity_kwh"] == 50
+    assert logged.put("/api/settings", json=base).json()["battery_capacity_kwh"] == 50  # omitted: kept
+
+
+def test_battery_health_endpoint(logged):
+    from datetime import date
+
+    store.add_health_sample(date(2026, 11, 11), 95.0)
+    store.add_health_sample(date(2026, 11, 12), 94.5)
+    assert logged.get("/api/battery-health").json() == [
+        {"day": "2026-11-11", "value": 95.0},
+        {"day": "2026-11-12", "value": 94.5},
+    ]
+
+
+def _seed_history():
+    from psacc.history.charges import ChargeSession
+    from psacc.history.trips import Trip
+
+    utc = timezone.utc
+    store.save_place(Place(name="Casa", kind="home", lat=1, lon=1))
+    home = store.save_charge_session(
+        ChargeSession(
+            started_at=datetime(2026, 10, 3, 2, 0, tzinfo=utc),
+            ended_at=datetime(2026, 10, 3, 5, 0, tzinfo=utc),
+            place_kind="home", soc_start=20, soc_end=70)
+    )
+    store.add_charge_sample(home.id, datetime(2026, 10, 3, 3, 0, tzinfo=utc), 40, 20.0)
+    work = store.save_charge_session(
+        ChargeSession(
+            started_at=datetime(2026, 10, 4, 10, 0, tzinfo=utc),
+            ended_at=datetime(2026, 10, 4, 12, 0, tzinfo=utc),
+            place_kind="work", soc_start=10, soc_end=30)
+    )
+    # 2026-11-01 01:00 UTC is November 01 00:00 Azores
+    store.save_charge_session(
+        ChargeSession(
+            started_at=datetime(2026, 11, 1, 1, 0, tzinfo=utc),
+            ended_at=datetime(2026, 11, 1, 2, 0, tzinfo=utc),
+            place_kind="work", soc_start=10, soc_end=20)
+    )
+    now = datetime.now(utc)
+    for days, km, kwh in ((2, 100.0, 15.0), (40, 50.0, 10.0)):
+        store.save_trip(
+            Trip(departed_at=now - timedelta(days=days, hours=1), arrived_at=now - timedelta(days=days),
+                 from_kind="home", to_kind="work", km=km, kwh=kwh, kwh_100km=kwh / km * 100)
+        )
+    return home, work
+
+
+def test_history_requires_login(client):
+    for path in ("/api/charges", "/api/charges/summary", "/api/charges/1/samples", "/api/trips", "/api/consumption"):
+        assert client.get(path).status_code == 401, path
+    assert client.put("/api/charges/1/price", json={"eur_kwh": 0.1}).status_code == 401
+
+
+def test_charges_list_and_samples(logged):
+    home, _ = _seed_history()
+    rows = logged.get("/api/charges", params={"limit": 2}).json()
+    assert len(rows) == 2 and rows[0]["started_at"] > rows[1]["started_at"]
+    assert logged.get("/api/charges", params={"limit": 5, "offset": 2}).json()[0]["id"] == home.id
+    h = logged.get("/api/charges", params={"limit": 5, "offset": 2}).json()[0]
+    assert h["kwh"] == pytest.approx(23.0)
+    samples = logged.get(f"/api/charges/{home.id}/samples").json()
+    assert [s["soc"] for s in samples] == [40]
+    assert rows[1]["cost_eur"] == 0.0  # work charge is free
+    assert logged.get("/api/charges/999/samples").status_code == 404
+
+
+def test_charge_price_put(logged):
+    _, work = _seed_history()
+    r = logged.put(f"/api/charges/{work.id}/price", json={"eur_kwh": 0.2})
+    assert r.status_code == 200
+    assert r.json()["price_override_eur_kwh"] == 0.2
+    assert r.json()["cost_eur"] == pytest.approx(0.2 * 9.2)
+    assert logged.put("/api/charges/999/price", json={"eur_kwh": 0.2}).status_code == 404
+    assert logged.put(f"/api/charges/{work.id}/price", json={"eur_kwh": -1}).status_code == 422
+
+
+def test_charges_summary_month_uses_azores_time(logged):
+    _seed_history()
+    oct_ = logged.get("/api/charges/summary", params={"month": "2026-10"}).json()
+    assert set(oct_) == {"kwh", "cost_eur", "work_pct", "home_pct", "avg_home_eur_kwh", "unpriced", "partial"}
+    assert oct_["kwh"] == pytest.approx(23.0 + 9.2)
+    assert oct_["home_pct"] == pytest.approx(23.0 / 32.2 * 100)
+    assert oct_["work_pct"] == pytest.approx(9.2 / 32.2 * 100)
+    assert oct_["unpriced"] == 1 and oct_["partial"] == 0  # seeded: one session without a price
+    nov = logged.get("/api/charges/summary", params={"month": "2026-11"}).json()
+    assert nov["kwh"] == pytest.approx(4.6)  # 01:00 UTC 1 Nov = 00:00 Azores, November
+    assert logged.get("/api/charges/summary", params={"month": "bad"}).status_code == 422
+
+
+def test_trips_list(logged):
+    _seed_history()
+    rows = logged.get("/api/trips", params={"limit": 1}).json()
+    assert len(rows) == 1 and rows[0]["km"] == 100.0
+    assert logged.get("/api/trips", params={"limit": 5, "offset": 1}).json()[0]["km"] == 50.0
+
+
+def test_consumption(logged):
+    _seed_history()
+    d = logged.get("/api/consumption").json()
+    assert d["last30"] == {"km": 100.0, "kwh": 15.0, "kwh_100km": 15.0}
+    assert sum(m["km"] for m in d["months"]) == 150.0
+    assert all(set(m) == {"month", "km", "kwh", "kwh_100km"} for m in d["months"])

@@ -1,55 +1,17 @@
 import { useQuery } from '@tanstack/react-query'
-import { apiGet, type Activity, type BatterySample, type Status, type Tariff } from '../api'
+import { apiGet, type Activity, type BatterySample, type Tariff } from '../api'
 import { ActivityList } from '../components/ActivityList'
 import { BatteryChart } from '../components/BatteryChart'
+import { AutomationCard, CableCard, HealthCard, HomeBanner, MileageCard } from '../components/PainelCards'
 import { QuickActions } from '../components/QuickActions'
 import { StatusPill } from '../components/StatusPill'
 import { TariffStrip } from '../components/TariffStrip'
 import { useControl } from '../components/useControl'
-import { fmtDate, fmtHour, fmtKm } from '../format'
+import { fmtHour, fmtKm } from '../format'
 import { pillState } from '../lib/pill'
 import { useStatus } from '../useStatus'
 
 const REFRESH = 30_000
-const ACTION_TEXT = { defer: 'ativar diferido', charge: 'iniciar carga' } as const
-
-function nextEventText(at: string, action: keyof typeof ACTION_TEXT): string {
-  const sameDay = fmtDate(at) === fmtDate(new Date())
-  return `${ACTION_TEXT[action]} ${sameDay ? 'às' : `a ${fmtDate(at).slice(0, 5)} às`} ${fmtHour(at)}`
-}
-
-function AutomationCard({ status, tariff, run, pending }: { status: Status; tariff?: Tariff; run: ReturnType<typeof useControl>['run']; pending: string | null }) {
-  const { automation, override, next_event } = status
-  return (
-    <div className="card">
-      <div className="label">Automação</div>
-      {override ? (
-        <>
-          <div className="mt-1 text-base font-bold">Carga manual ativa</div>
-          <div className="mt-2 text-xs text-muted">Desde as {fmtHour(override.started_at)} · até ao limite ou desligar o cabo</div>
-          <button className="btn mt-2 !py-1.5 !text-xs" disabled={pending !== null} onClick={() => void run('cancel', '/api/control/cancel-override')}>
-            {pending === 'cancel' && <span className="spinner" aria-hidden="true" />}
-            Cancelar
-          </button>
-        </>
-      ) : (
-        <>
-          <div className="mt-1 text-base font-bold">
-            {automation.enabled ? 'Ativa' : 'Desligada'}
-            {tariff && ` · ${tariff.name}`}
-          </div>
-          {automation.enabled && (
-            <div className="mt-2 text-xs">
-              Próximo: {next_event ? <b>{nextEventText(next_event.at, next_event.action)}</b> : <span className="text-muted">sem eventos previstos</span>}
-            </div>
-          )}
-          <div className="mt-1 text-xs text-muted">desvio {automation.offset_min} min</div>
-        </>
-      )}
-    </div>
-  )
-}
-
 export default function Painel() {
   const { data: status, isError } = useStatus()
   const tariff = useQuery({ queryKey: ['tariff'], queryFn: () => apiGet<Tariff>('/api/tariff') })
@@ -84,6 +46,8 @@ export default function Painel() {
         {pill && <StatusPill state={pill} />}
       </div>
 
+      {status.where === 'unset' && <HomeBanner positionAgeMin={status.position_age_min} />}
+
       <div className="grid gap-[14px] md:grid-cols-3">
         <div className="card">
           <div className="label">Bateria</div>
@@ -107,6 +71,9 @@ export default function Painel() {
           </div>
         </div>
         <AutomationCard status={status} tariff={tariff.data} run={run} pending={pending} />
+        <CableCard status={status} />
+        <MileageCard status={status} />
+        <HealthCard status={status} />
       </div>
 
       <div className="mt-[14px]">{tariff.data && <TariffStrip tariff={tariff.data} />}</div>

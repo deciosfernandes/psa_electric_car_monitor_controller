@@ -43,6 +43,7 @@ class SettingsIn(BaseModel):
     discord_webhook: str | None = None  # None keeps the current one, "" removes it
     discord_info: bool
     refresh_min: int = Field(ge=1, le=60)
+    battery_capacity_kwh: float | None = Field(None, ge=10, le=150)  # None keeps the current value
 
     @field_validator("discord_webhook")
     @classmethod
@@ -117,6 +118,7 @@ def _settings(cfg: store.AppConfig) -> dict:
         "discord_webhook_set": bool(cfg.discord_webhook),
         "discord_info": cfg.discord_info,
         "refresh_min": cfg.refresh_min,
+        "battery_capacity_kwh": cfg.battery_capacity_kwh,
     }
 
 
@@ -132,6 +134,8 @@ def put_settings(body: SettingsIn) -> dict:
         cfg.discord_webhook = body.discord_webhook or None
     cfg.discord_info = body.discord_info
     cfg.refresh_min = body.refresh_min
+    if body.battery_capacity_kwh is not None:
+        cfg.battery_capacity_kwh = body.battery_capacity_kwh
     store.save_config(cfg)
     return _settings(cfg)
 

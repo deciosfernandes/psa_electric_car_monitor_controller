@@ -162,3 +162,27 @@ def test_activity_source_column_added_to_existing_db(tmp_path):
     con.close()
     store.init_db(f"sqlite:///{db}")
     assert [(a.message, a.source) for a in store.recent_activity()] == [("antigo", "automation")]
+
+
+def test_trip_with_unknown_energy_round_trips():
+    from psacc.history.trips import Trip
+
+    dep, arr = datetime(2026, 11, 13, tzinfo=timezone.utc), datetime(2026, 11, 13, 1, tzinfo=timezone.utc)
+    store.save_trip(Trip(departed_at=dep, arrived_at=arr, from_kind="home", to_kind="work", km=5))
+    assert [(t.kwh, t.kwh_100km) for t in store.trips(10)] == [(None, None)]
+
+
+def test_health_sample_upsert_one_per_day():
+    from datetime import date
+
+    store.add_health_sample(date(2026, 11, 12), 95.0)
+    store.add_health_sample(date(2026, 11, 12), 94.0)
+    store.add_health_sample(date(2026, 11, 11), 96.0)
+    assert store.health_samples() == [(date(2026, 11, 11), 96.0), (date(2026, 11, 12), 94.0)]
+
+
+def test_capacity_default_and_range():
+    assert store.get_config().battery_capacity_kwh == 46
+    for bad in (9, 151):
+        with pytest.raises(ValueError):
+            AppConfig(battery_capacity_kwh=bad)

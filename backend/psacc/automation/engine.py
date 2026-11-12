@@ -4,6 +4,10 @@ A *round* is one command being enforced: up to ``MAX_ATTEMPTS`` sends, each foll
 Failed attempts wait ``RETRY_DELAYS_S[attempt - 1]`` before the car is re-checked and, if still wrong,
 the command is re-sent; after the last attempt the owner is alerted once per failure episode (an episode
 ends with the next verified command, and survives restarts via ``LastCommand.alerted``).
+
+Each evaluated snapshot also updates the stored position fix and locates the car (``last_where``,
+``last_place``). The tariff rules apply only at Casa; at Trabalho "charge" is sent once per plug-in episode
+(``store.WorkEpisode``), and a "defer" is never sent, nor re-sent by a retry, outside Casa.
 """
 
 import logging
@@ -14,8 +18,11 @@ from typing import Callable, Literal, Protocol
 
 from .. import store
 from ..gateway import CarGateway, CarSnapshot
+from ..history.charges import ChargeDetector, ChargeEvent
+from ..history.trips import TripDetector
+from ..places import Place, Where, locate, update_fix
 from ..settings import TZ
-from ..store import LastCommand, Override
+from ..store import LastCommand, Override, WorkEpisode
 from ..tariff.schedule import next_vazio_start
 from .decide import Decision, decide
 
@@ -74,6 +81,7 @@ class _Round:
     reason: str
     alerted: bool
     manual: bool = False  # started by manual_charge() with automation off: not cancelled by "Automação desligada"
+    work: bool = False  # the once-per-episode charge at Trabalho
     program_hour: tuple[int, int] | None = None
     attempts: int = 0
     phase: Literal["verify", "retry"] = "verify"
@@ -100,6 +108,11 @@ class Engine:
         self._round: _Round | None = None
         self._plugged: bool | None = None
         self._replugged = False  # cable just plugged back in: (re)send the command even if one was verified
+        # where the car was at the last evaluated snapshot (None before the first one): read by other components
+        self.last_where: Where | None = None
+        self.last_place: Place | None = None
+        self._charges: ChargeDetector | None = None  # built on first use (reads the open session from the store)
+        self._trips: TripDetector | None = None
         self._closed = False  # set by close(): every entry point becomes a no-op
         self._closing = threading.Event()
         # settle wait outside the lock; True means "closing, stop" (tests inject an instantaneous one)
@@ -127,6 +140,8 @@ class Engine:
                 self._evaluate(snap)
             except Exception:
                 logger.exception("automation status handling failed")
+            self._record_charges(snap)
+            self._record_trips(snap)
 
     def manual_charge(self) -> None:
         with self._lock:
@@ -213,12 +228,52 @@ class Engine:
     def _record_status(self, snap: CarSnapshot) -> None:
         if snap.soc is not None:
             store.add_battery_sample(snap.at, snap.soc, bool(snap.charging))
+        if snap.battery_health is not None:
+            store.add_health_sample(snap.at.astimezone(TZ).date(), snap.battery_health)
         if snap.plugged is None:
             return
         if self._plugged is not None and snap.plugged != self._plugged:
             store.log_activity("info", "Cabo ligado" if snap.plugged else "Cabo desligado", at=self._clock())
             self._replugged = snap.plugged
         self._plugged = snap.plugged
+
+    def _record_charges(self, snap: CarSnapshot) -> None:
+        """Feed the charge-session detector with the place computed by this snapshot's evaluation."""
+        try:
+            if self.last_where is None:
+                return
+            if self._charges is None:
+                self._charges = ChargeDetector(store.open_charge_session())
+            for ev in self._charges.feed(snap, self.last_where, self.last_place):
+                self._persist_charge(ev)
+        except Exception:
+            logger.exception("charge session recording failed")
+
+    def _record_trips(self, snap: CarSnapshot) -> None:
+        """Feed the trip detector with the place computed by this snapshot's evaluation."""
+        try:
+            if self.last_where is None:
+                return
+            if self._trips is None:
+                self._trips = TripDetector(store.get_config().battery_capacity_kwh)
+            self._trips.capacity = store.get_config().battery_capacity_kwh  # editable setting
+            trip = self._trips.feed(snap, self.last_where, self.last_place)
+            if trip is not None:
+                store.save_trip(trip)
+        except Exception:
+            logger.exception("trip recording failed")
+
+    @staticmethod
+    def _persist_charge(ev: ChargeEvent) -> None:
+        s = ev.session
+        if ev.kind == "start":
+            s.id = store.save_charge_session(s).id
+        if ev.sample is not None and s.id is not None:
+            store.add_charge_sample(s.id, ev.sample.at, ev.sample.soc, ev.sample.rate_kmh)
+        if ev.kind != "start" and s.id is not None:
+            stored = store.get_charge_session(s.id)  # the user may have set a price since the session opened
+            s.price_override_eur_kwh = stored.price_override_eur_kwh if stored else None
+            store.save_charge_session(store.recompute_session_cost(s))
 
     def _evaluate(self, car: CarSnapshot) -> None:
         # a re-plug forces one command on this evaluation only, also when it returns early (no lingering resend)
@@ -230,7 +285,9 @@ class Engine:
             store.set_override(None)
             store.log_activity("info", "Carga manual cancelada (cabo desligado)", at=now)
             override = None
-        decision = decide(now, cfg, store.get_tariff(), car, override)
+        where = self._locate(car, now)
+        work_charge_sent = self._work_charge_sent(car, where)
+        decision = decide(now, cfg, store.get_tariff(), car, override, where, work_charge_sent)
         if decision.clear_override and override is not None:
             store.set_override(None)
         if self._round is not None and self._round.timer is None:
@@ -239,18 +296,50 @@ class Engine:
             self._round = None
         if decision.mode is None:
             # unknown car state keeps the round going; only unplugging or switching automation off ends it
+            # (an unknown position too, except for a defer: never sent outside Casa)
             if self._round is not None and (
-                car.plugged is False or (not cfg.automation_enabled and not self._round.manual)
+                car.plugged is False
+                or (not cfg.automation_enabled and not self._round.manual)
+                or (self._round.mode == "defer" and where != "home")
             ):
                 self._cancel_round()
             return
+        work = where == "work" and not work_charge_sent  # this episode's one work charge (not a manual one)
         if self._round is not None:
             if self._round.mode == decision.mode:
+                if work:  # a charge already being enforced counts as this episode's work charge
+                    self._round.work = True
+                    store.set_work_episode(WorkEpisode(charge_sent_at=now))
                 return  # already being enforced
             self._cancel_round()
         last = store.get_last_command()
-        if replugged or self._needs_command(decision.mode, car, last, now):
-            self._start_round(decision, last)
+        # at Trabalho the charge is sent once per episode even if a charge was verified before (e.g. at Casa)
+        if work or replugged or self._needs_command(decision.mode, car, last, now):
+            if work:  # stored first: a failure after the send must not lead to a second work charge
+                store.set_work_episode(WorkEpisode(charge_sent_at=now))
+            self._start_round(decision, last, work=work)
+            if work:
+                store.log_activity("info", "Carga no Trabalho iniciada", at=now)
+
+    def _locate(self, car: CarSnapshot, now: datetime) -> Where:
+        """Store the snapshot's position fix if it is new, then locate the car (once per evaluated snapshot)."""
+        fix = store.get_position_fix()
+        new_fix = update_fix(car, fix)
+        if new_fix is not None:
+            store.set_position_fix(new_fix)
+            fix = new_fix
+        self.last_where, self.last_place = locate(now, car, fix, store.list_places())
+        return self.last_where
+
+    def _work_charge_sent(self, car: CarSnapshot, where: Where) -> bool:
+        """The plug-in episode at Trabalho ends when the car is unplugged or located at Casa. "unset" and
+        "other" do not end it: GPS jitter at the work radius edge or re-creating Casa must not allow a second
+        work charge (a plugged car does not move)."""
+        episode = store.get_work_episode()
+        if episode is not None and (car.plugged is False or where == "home"):
+            store.set_work_episode(None)
+            return False
+        return episode is not None
 
     def verification_pending(self) -> bool:
         """A command is in flight (sent, not yet verified or given up). Read without the lock: advisory only."""
@@ -266,10 +355,12 @@ class Engine:
         stale = now - last.at > timedelta(seconds=self.verify_delay_s * 3)
         return not car.charging and car.charge_status != "Finished" and stale
 
-    def _start_round(self, decision: Decision, last: LastCommand | None, manual: bool = False) -> None:
+    def _start_round(
+        self, decision: Decision, last: LastCommand | None, manual: bool = False, work: bool = False
+    ) -> None:
         # the alert flag is cleared on every verified success, so carrying it over keeps one alert per episode
         self._round = _Round(
-            mode=decision.mode, reason=decision.reason, alerted=bool(last and last.alerted), manual=manual
+            mode=decision.mode, reason=decision.reason, alerted=bool(last and last.alerted), manual=manual, work=work
         )
         try:
             self._attempt(self._round)
@@ -329,6 +420,9 @@ class Engine:
         elif r.phase == "verify":
             logger.warning("%s not applied after attempt %d", r.mode, r.attempts)
             self._retry_later(r)
+        elif r.mode == "defer" and self.last_where != "home":
+            logger.info("car no longer known to be at Casa, dropping pending defer")
+            self._round = None
         elif r.attempts < MAX_ATTEMPTS:
             self._attempt(r)
         else:
@@ -350,14 +444,13 @@ class Engine:
         if r.alerted:
             logger.warning("%s still failing after %d attempts (already alerted)", r.mode, r.attempts)
             return
-        store.log_activity(
-            "error",
-            f"Não consegui {_verb(r.mode)} a carga diferida após {r.attempts} tentativas ({r.reason})",
-            at=self._clock(),
-        )
+        what = "iniciar a carga no Trabalho" if r.work else f"{_verb(r.mode)} a carga diferida"
+        store.log_activity("error", f"Não consegui {what} após {r.attempts} tentativas ({r.reason})", at=self._clock())
         r.alerted = True
         self._persist(r, verified=False)
-        if r.mode == "charge":
+        if r.work:
+            text = "⚠️ PSACC: não consegui iniciar a carga no Trabalho."
+        elif r.mode == "charge":
             text = f"⚠️ PSACC: não consegui iniciar a carga no vazio ({r.reason})."
         else:
             text = (

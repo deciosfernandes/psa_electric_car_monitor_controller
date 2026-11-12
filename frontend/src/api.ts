@@ -18,6 +18,8 @@ export interface CarSnapshot {
   longitude: number | null
   locked: boolean | null
   precond_on: boolean | null
+  mileage_km: number | null
+  battery_health: number | null // % reported by PSA
 }
 
 export interface ScheduleEvent {
@@ -40,8 +42,25 @@ export interface LastCommand {
   program_hour: [number, number] | null
 }
 
+export type Where = 'home' | 'work' | 'other' | 'unknown' | 'unset'
+
+export interface Place {
+  id: number | null
+  name: string
+  kind: 'home' | 'work' | 'other'
+  lat: number
+  lon: number
+  radius_m: number
+  price_eur_kwh: number | null
+}
+
 export interface Status {
   car: CarSnapshot | null // null while the PSA account is not configured or awaiting first poll
+  where: Where
+  place_name: string | null
+  paused_reason: string | null // why the automation is idle (null at Casa)
+  mileage_km: number | null
+  position_age_min: number | null
   period: PeriodType
   next_event: ScheduleEvent | null
   automation: { enabled: boolean; offset_min: number; battery_limit: number }
@@ -131,3 +150,64 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
 export const apiGet = <T,>(path: string) => request<T>('GET', path)
 export const apiSend = <T,>(method: 'POST' | 'PUT' | 'DELETE' | 'PATCH', path: string, body?: unknown) =>
   request<T>(method, path, body)
+
+export interface ChargeSession {
+  id: number
+  started_at: string
+  ended_at: string | null
+  place_kind: Where
+  place_name: string | null
+  soc_start: number
+  soc_end: number | null
+  kwh: number | null
+  cost_eur: number | null // null = unknown price
+  price_override_eur_kwh: number | null
+  partial: boolean // session seen only in part: kWh and cost are approximate
+}
+
+export interface ChargeSample {
+  at: string
+  soc: number
+  rate_kmh: number | null
+}
+
+export interface ChargeSummary {
+  kwh: number
+  cost_eur: number // unknown-cost sessions count as 0
+  unpriced: number // sessions of the month without a known cost
+  partial: number // sessions seen only in part
+  work_pct: number
+  home_pct: number
+  avg_home_eur_kwh: number | null
+}
+
+export interface Trip {
+  id: number
+  departed_at: string
+  arrived_at: string
+  from_kind: Where
+  from_name: string | null
+  to_kind: Where
+  to_name: string | null
+  from_lat: number | null
+  from_lon: number | null
+  to_lat: number | null
+  to_lon: number | null
+  km: number
+  soc_start: number | null
+  soc_end: number | null
+  kwh: number | null // null = unknown (no SoC at one end)
+  kwh_100km: number | null
+}
+
+export interface ConsumptionMonth {
+  month: string // YYYY-MM
+  km: number
+  kwh: number
+  kwh_100km: number | null
+}
+
+export interface Consumption {
+  last30: { km: number; kwh: number; kwh_100km: number | null }
+  months: ConsumptionMonth[]
+}
