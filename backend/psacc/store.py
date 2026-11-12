@@ -58,6 +58,12 @@ class LastCommand(BaseModel):
     program_hour: tuple[int, int] | None = None  # (hour, minute) Azores local time sent with the command
 
 
+class WorkEpisode(BaseModel):
+    """The car is plugged in at Trabalho and the one "charge" of this plug-in episode was already sent."""
+
+    charge_sent_at: datetime
+
+
 class BatterySample(BaseModel):
     at: datetime
     soc: float
@@ -310,3 +316,11 @@ def get_position_fix() -> PositionFix | None:
 
 def set_position_fix(fix: PositionFix | None) -> None:
     _set_state("position_fix", fix)
+
+
+def get_work_episode() -> WorkEpisode | None:
+    return _get_state("work_episode", WorkEpisode)
+
+
+def set_work_episode(e: WorkEpisode | None) -> None:
+    _set_state("work_episode", e)

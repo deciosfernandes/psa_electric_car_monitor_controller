@@ -5,6 +5,7 @@ import pytest
 
 from psacc import settings, store
 from psacc.automation.engine import RETRY_DELAYS_S, SETTLE_S, Engine
+from psacc.places import Place
 from psacc.settings import TZ
 from psacc.store import AppConfig
 from psacc.tariff.model import Season, Slot, Tariff
@@ -20,6 +21,7 @@ ALERT_DEFER = (
 def db(tmp_path, monkeypatch):
     monkeypatch.setattr(settings, "DATA_DIR", tmp_path)
     store.init_db("sqlite://")
+    store.save_place(Place(name="Casa", kind="home", lat=HOME[0], lon=HOME[1]))  # the default snapshot is at Casa
 
 
 class FakeNotifier:
@@ -71,6 +73,9 @@ def no_wait(seconds: float) -> bool:
 
 
 THU = datetime(2026, 11, 12, tzinfo=TZ)  # a Thursday, winter season
+HOME = (37.74, -25.67)
+WORK = (37.80, -25.50)
+OTHER = (37.70, -25.40)
 
 
 def thu(h, mi=0):
@@ -78,7 +83,7 @@ def thu(h, mi=0):
 
 
 def snap(**kw):
-    return dataclasses.replace(default_snapshot(), **kw)
+    return dataclasses.replace(default_snapshot(), **{"position_at": THU.astimezone(UTC), **kw})
 
 
 def make(car=None, at=thu(19), apply_effect=False):
@@ -568,3 +573,126 @@ def test_replug_flag_cleared_when_evaluation_returns_early():
     gw.snap = snap(plugged=True, charging=False, charge_status="Stopped", soc=50.0)
     engine.on_status(gw.snap)  # same vazio program, verified, not charging: nothing to send
     assert len(charge_calls(gw)) == 1
+
+
+# ---- location (Plan 2) -------------------------------------------------------------------------------------
+
+
+def at_place(latlon, minutes=0, **kw):
+    pos_at = (THU + timedelta(minutes=minutes)).astimezone(UTC)
+    return snap(latitude=latlon[0], longitude=latlon[1], position_at=pos_at, **kw)
+
+
+def add_work():
+    store.save_place(Place(name="Trabalho", kind="work", lat=WORK[0], lon=WORK[1]))
+
+
+def test_engine_persists_fix_and_exposes_where():
+    engine, gw, *_ = make(car=at_place(HOME, plugged=True, charging=False))
+    assert engine.last_where is None
+    engine.on_status(gw.snap)
+    assert store.get_position_fix().at == THU.astimezone(UTC)
+    assert store.get_position_fix().mileage_km == gw.snap.mileage_km
+    assert engine.last_where == "home" and engine.last_place.name == "Casa"
+    gw.snap = at_place(OTHER, minutes=30, plugged=True, charging=False)
+    engine.tick()
+    assert (engine.last_where, engine.last_place) == ("other", None)
+    assert (store.get_position_fix().lat, store.get_position_fix().lon) == OTHER
+
+
+def test_work_charge_once_per_episode():
+    add_work()
+    engine, gw, notifier, sched, clock = make(car=at_place(WORK, plugged=True, charging=False), apply_effect=True)
+    engine.on_status(gw.snap)
+    assert charge_calls(gw) == [("set_charge_mode", "charge", (0, 10))]
+    assert "Carga no Trabalho iniciada" in messages("info")
+    engine.on_status(gw.snap)  # same episode: nothing more, the round is being verified
+    engine.verify_now()
+    assert store.get_last_command().verified is True
+    gw.snap = dataclasses.replace(gw.snap, charging=False, charge_status="Stopped")  # e.g. stopped from the car
+    clock.now = thu(21)
+    engine.on_status(gw.snap)
+    engine.tick()
+    assert len(charge_calls(gw)) == 1
+    gw.snap = dataclasses.replace(gw.snap, plugged=False, charge_status="Disconnected")
+    engine.on_status(gw.snap)
+    gw.snap = dataclasses.replace(gw.snap, plugged=True, charge_status="Stopped")
+    engine.on_status(gw.snap)  # new plug-in episode
+    assert charge_calls(gw) == [("set_charge_mode", "charge", (0, 10))] * 2
+
+
+def test_work_episode_survives_restart():
+    add_work()
+    engine, gw, *_ = make(car=at_place(WORK, plugged=True, charging=False))
+    engine.on_status(gw.snap)
+    restarted = Engine(gw, FakeNotifier(), clock=Clock(thu(19, 5)), scheduler=FakeScheduler(), wait=no_wait)
+    restarted.on_status(gw.snap)
+    assert len(charge_calls(gw)) == 1
+
+
+def test_work_charge_ignores_verified_charge_and_override():
+    add_work()
+    engine, gw, *_ = make(car=at_place(WORK, plugged=True, charging=True, charge_status="InProgress"))
+    store.set_override(store.Override(started_at=thu(18), reason="manual"))
+    # a recent verified charge (e.g. from Casa) would stop the Plan 1 rules from re-sending
+    store.set_last_command(store.LastCommand(mode="charge", at=thu(18, 59), verified=True, attempts=1))
+    engine.on_status(gw.snap)
+    assert charge_calls(gw) == [("set_charge_mode", "charge", (0, 10))]
+
+
+def test_work_charge_failure_alert_text():
+    add_work()
+    engine, gw, notifier, *_ = make(car=at_place(WORK, plugged=True, charging=False))
+    gw.fail_next = 3
+    engine.on_status(gw.snap)
+    for _ in range(3):
+        engine.verify_now()
+    assert len(charge_calls(gw)) == 3
+    assert notifier.alerts == ["⚠️ PSACC: não consegui iniciar a carga no Trabalho."]
+
+
+def test_no_defer_outside_home():
+    add_work()
+    for latlon, soc in ((OTHER, 50.0), (OTHER, 95.0), (WORK, 95.0)):
+        store.set_position_fix(None)
+        store.set_work_episode(None)
+        engine, gw, *_ = make(car=at_place(latlon, plugged=True, charging=True, charge_status="InProgress", soc=soc))
+        engine.on_status(gw.snap)
+        engine.verify_now()
+        engine.tick()
+        assert [c for c in charge_calls(gw) if c[1] == "defer"] == []
+
+
+def test_no_command_without_home_place_or_position():
+    for p in store.list_places():
+        store.delete_place(p.id)
+    engine, gw, *_ = make()
+    engine.tick()
+    assert engine.last_where == "unset" and charge_calls(gw) == []
+    store.save_place(Place(name="Casa", kind="home", lat=HOME[0], lon=HOME[1]))
+    gw.snap = snap(latitude=None, longitude=None, position_at=None)
+    store.set_position_fix(None)
+    engine.tick()
+    assert engine.last_where == "unknown" and charge_calls(gw) == []
+
+
+def test_pending_defer_dropped_when_car_no_longer_at_home():
+    engine, gw, notifier, sched, _ = make(car=at_place(HOME, plugged=True, charging=True, charge_status="InProgress"))
+    gw.fail_next = 1
+    engine.on_status(gw.snap)
+    assert charge_calls(gw) == [("set_charge_mode", "defer", (0, 10))]
+    gw.snap = at_place(OTHER, minutes=5, plugged=True, charging=True, charge_status="InProgress")
+    engine.on_status(gw.snap)
+    assert not engine.verification_pending()
+    engine.verify_now()
+    assert len(charge_calls(gw)) == 1
+    assert notifier.alerts == []
+
+
+def test_defer_retry_never_sent_once_car_is_not_known_at_home():
+    engine, gw, *_ = make(car=at_place(HOME, plugged=True, charging=True, charge_status="InProgress"))
+    gw.fail_next = 1
+    engine.on_status(gw.snap)
+    engine.last_where = "unknown"  # e.g. located elsewhere by an evaluation that then failed
+    engine.verify_now()
+    assert len(charge_calls(gw)) == 1 and not engine.verification_pending()
