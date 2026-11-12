@@ -8,6 +8,7 @@ import requests
 from psacc.psa.constants import BRAND
 from psacc.psa.setup.apk_parser import ApkParser
 from psacc.psa.setup.github import urlretrieve_from_github
+from psacc.psa.setup.paths import apk_dir, cert_paths
 from psacc.psa_client import PSAClient
 
 logger = logging.getLogger(__name__)
@@ -18,8 +19,8 @@ TIMEOUT_IN_S = 30
 
 
 def get_content_from_apk(filename: str, country_code: str) -> ApkParser:
-    urlretrieve_from_github(GITHUB_USER, GITHUB_REPO, "", filename)
-    apk_parser = ApkParser(filename, country_code)
+    local = urlretrieve_from_github(GITHUB_USER, GITHUB_REPO, "", filename, dest_dir=apk_dir())
+    apk_parser = ApkParser(str(local), country_code)
     apk_parser.retrieve_content_from_apk()
     return apk_parser
 
@@ -97,7 +98,7 @@ class InitialSetup:
                     "User-Agent": "okhttp/4.8.0",
                     "Version": self.version
                 },
-                cert=("certs/public.pem", "certs/private.pem"),
+                cert=cert_paths(),
                 timeout=TIMEOUT_IN_S
             )
 

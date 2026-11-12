@@ -8,6 +8,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.serialization import pkcs12
 
 from psacc.psa.constants import BRAND
+from psacc.psa.setup.paths import cert_paths
 
 from androguard.core.axml import logger as androguard_logger
 androguard_logger.remove()
@@ -51,17 +52,19 @@ class ApkParser:
         save_key_to_pem(pfx_cert, b"y5Y2my5B")
 
 
+def _write_private(path: str, data: bytes) -> None:
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "wb") as f:
+        f.write(data)
+    if os.name == "posix":
+        os.chmod(path, 0o600)
+
+
 def save_key_to_pem(pfx_data, pfx_password):
     private_key, certificate = pkcs12.load_key_and_certificates(pfx_data,
                                                                 pfx_password, default_backend())[:2]
-    try:
-        os.mkdir("certs")
-    except FileExistsError:
-        pass
-    with open("certs/public.pem", "wb") as f:
-        f.write(certificate.public_bytes(encoding=serialization.Encoding.PEM))
-
-    with open("certs/private.pem", "wb") as f:
-        f.write(private_key.private_bytes(encoding=serialization.Encoding.PEM,
-                                          format=serialization.PrivateFormat.TraditionalOpenSSL,
-                                          encryption_algorithm=serialization.NoEncryption()))
+    public_path, private_path = cert_paths()
+    _write_private(public_path, certificate.public_bytes(encoding=serialization.Encoding.PEM))
+    _write_private(private_path, private_key.private_bytes(encoding=serialization.Encoding.PEM,
+                                                           format=serialization.PrivateFormat.TraditionalOpenSSL,
+                                                           encryption_algorithm=serialization.NoEncryption()))
