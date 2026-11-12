@@ -4,7 +4,7 @@ services:
     image: psacc
     restart: unless-stopped
     ports:
-      - "5000:5000"
+      - "3208:5000"
     volumes:
       - ./data:/data
     environment:

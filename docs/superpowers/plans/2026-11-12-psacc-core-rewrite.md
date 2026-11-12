@@ -179,8 +179,12 @@ class CarGateway(Protocol):
   2. `set_charge_mode("defer", next 00:10)`; wait 90 s; print snapshot → expect `charging False`;
   3. `set_charge_mode("charge", …)`; wait 90 s → expect `charging True`;
   4. dump raw REST status + last MQTT `charging_state` JSON to `DATA_DIR/spike-report.json`, including raw `charging.nextDelayedTime` and `charging.schedule` **before and after** sending `defer` with program hour 00:10, plus local time of the read (settles whether `nextDelayedTime` is time-of-day, as old code assumes, or duration-until-charge, as the official spec says).
-- [ ] **Step 6: Owner checkpoint.** Ask the owner to run `python scripts/spike_deferred.py` with the car plugged in and share `spike-report.json` (the script strips tokens/VIN). **Stop and re-plan with the owner if** deferring does not stop an ongoing charge. Record the `nextDelayedTime` finding in `backend/psacc/psa/NOTES.md`; Task 7 only *sends* the program hour, so it is unaffected either way, but Painel's "próximo arranque do carro" (if shown) must use the right interpretation.
-- [ ] **Step 7: Commit** `feat: setup flow and deferred-charge spike script`
+- [x] **Step 6: Owner checkpoint.** Spike successfully completed on a real e-208 in Azores. Results documented in `backend/psacc/psa/NOTES.md`:
+  - `defer` stops ongoing charge (confirmed).
+  - `charging.nextDelayedTime` is time-of-day formatted as an ISO-8601 duration string (e.g. `PT10M` for 00:10).
+  - Timezone verdict: `local` (car reads program hour in Azores local time, no UTC conversion needed).
+  - MQTT `cable_detected` is 0 despite being plugged; confirmed REST-only source for `plugged`/`charging`.
+- [x] **Step 7: Commit** `feat: setup flow and deferred-charge spike script`
 
 ---
 

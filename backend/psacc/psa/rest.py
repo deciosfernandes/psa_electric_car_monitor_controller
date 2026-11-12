@@ -1,4 +1,5 @@
 import logging
+import time
 
 import requests
 
@@ -40,6 +41,9 @@ class PsaRest:
                 refreshed = False
             if refreshed:
                 response = self._request(path, params)
+        elif response.status_code in (500, 502, 503, 504):
+            time.sleep(1)
+            response = self._request(path, params)
         response.raise_for_status()
         return response.json()
 

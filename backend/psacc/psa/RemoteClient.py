@@ -82,9 +82,10 @@ class RemoteClient:
         # called with each decoded vehicle event, on the paho network thread: callbacks must not block
         self.on_event: list[Callable[[dict], None]] = []
 
-    def __on_mqtt_connect(self, client, userdata, result_code, _):  # pylint: disable=unused-argument
+    def __on_mqtt_connect(self, client, userdata, flags, result_code, *args):  # pylint: disable=unused-argument
         logger.info("Connected with result code %s", result_code)
         if result_code != 0:
+            logger.warning("MQTT connection refused: %s (rc=%s)", mqtt.connack_string(result_code), result_code)
             return
         topics = [MQTT_RESP_TOPIC + self.account_info.get_mqtt_customer_id() + "/#"]
         for car in self.vehicles_list:
@@ -236,9 +237,13 @@ class RemoteClient:
     def _refresh_remote_token(self, force=False) -> bool:
         with self._lock:
             bad_remote_token = self.remoteCredentials.refresh_token is None
-            if not force and not bad_remote_token and self.remoteCredentials.last_update:
-                last_update: datetime = self.remoteCredentials.last_update
-                if (datetime.now() - last_update).total_seconds() < MQTT_TOKEN_TTL:
+            last_refresh = self.remote_token_last_update or (
+                self.remoteCredentials.last_update
+                if self.remoteCredentials.last_update and self.remoteCredentials.last_update.year > 1970
+                else None
+            )
+            if not force and not bad_remote_token and last_refresh:
+                if (datetime.now() - last_refresh).total_seconds() < MQTT_TOKEN_TTL:
                     return True
             if force and self.remote_token_last_update is not None:
                 # throttle forced refreshes (e.g. one per paho reconnect attempt on rc 7):
@@ -275,8 +280,11 @@ class RemoteClient:
                 if bad_remote_token:
                     otp_code = self.get_otp_code()
                     self._get_remote_access_token(otp_code)
-                self.remote_token_last_update = datetime.now()
-                self.mqtt_client.username_pw_set("IMA_OAUTH_ACCESS_TOKEN", self.remoteCredentials.access_token)
+                now = datetime.now()
+                self.remote_token_last_update = now
+                self.remoteCredentials.last_update = now
+                if self.mqtt_client is not None:
+                    self.mqtt_client.username_pw_set("IMA_OAUTH_ACCESS_TOKEN", self.remoteCredentials.access_token)
                 self.auth_failed = False
                 return True
             except RateLimitException as e:
