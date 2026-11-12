@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from psacc import settings, store
-from psacc.automation.engine import RETRY_DELAYS_S, Engine
+from psacc.automation.engine import RETRY_DELAYS_S, SETTLE_S, Engine
 from psacc.settings import TZ
 from psacc.store import AppConfig
 from psacc.tariff.model import Season, Slot, Tariff
@@ -66,6 +66,10 @@ class Clock:
         return self.now
 
 
+def no_wait(seconds: float) -> bool:
+    return False  # settle waits are instantaneous in tests; True would mean "engine closing"
+
+
 THU = datetime(2026, 11, 12, tzinfo=TZ)  # a Thursday, winter season
 
 
@@ -82,7 +86,7 @@ def make(car=None, at=thu(19), apply_effect=False):
         car or snap(plugged=True, charging=True, charge_status="InProgress", soc=50.0), apply_effect=apply_effect
     )
     notifier, sched, clock = FakeNotifier(), FakeScheduler(), Clock(at)
-    engine = Engine(gw, notifier, clock=clock, scheduler=sched)
+    engine = Engine(gw, notifier, clock=clock, scheduler=sched, wait=no_wait)
     return engine, gw, notifier, sched, clock
 
 
@@ -143,7 +147,7 @@ def test_alert_not_repeated_after_restart_mid_episode():
         engine.verify_now()
     assert len(notifier.alerts) == 1
     notifier2 = FakeNotifier()
-    restarted = Engine(gw, notifier2, clock=Clock(thu(19, 30)), scheduler=FakeScheduler())
+    restarted = Engine(gw, notifier2, clock=Clock(thu(19, 30)), scheduler=FakeScheduler(), wait=no_wait)
     restarted.tick()
     for _ in range(3):
         restarted.verify_now()
@@ -353,7 +357,7 @@ def test_scheduler_failure_does_not_block_later_ticks():
             raise RuntimeError("cannot start timer")
         return sched(delay_s, fn)
 
-    engine = Engine(gw, FakeNotifier(), clock=Clock(thu(19)), scheduler=flaky)
+    engine = Engine(gw, FakeNotifier(), clock=Clock(thu(19)), scheduler=flaky, wait=no_wait)
     engine.tick()
     engine.tick()
     assert len(charge_calls(gw)) == 2
@@ -507,3 +511,45 @@ def test_replug_forces_defer_even_after_verified_defer():
     engine.verify_now()
     engine.on_status(gw.snap)
     assert len(charge_calls(gw)) == 2  # the forced command is one-off
+
+
+class SettlingGateway(FakeGateway):
+    """The woken read still shows the old state; PSA's REST state is fresh only after the settle wait."""
+
+    def __init__(self, car):
+        super().__init__(car)
+        self.reads: list[bool] = []
+
+    def snapshot(self, refresh: bool = False):
+        self.reads.append(refresh)
+        return self.snap
+
+
+def test_verification_wakes_settles_and_rereads_before_judging():
+    gw = SettlingGateway(snap(plugged=True, charging=True, charge_status="InProgress"))
+    notifier, sched, waits = FakeNotifier(), FakeScheduler(), []
+
+    def wait(seconds):
+        waits.append(seconds)
+        gw.snap = dataclasses.replace(gw.snap, charging=False, charge_status="Stopped")  # the car caught up
+        return False
+
+    engine = Engine(gw, notifier, clock=Clock(thu(19)), scheduler=sched, wait=wait)
+    engine.tick()
+    gw.reads.clear()
+    engine.verify_now()
+    assert waits == [SETTLE_S] and SETTLE_S == 20
+    assert gw.reads == [True, False]  # wakeup read, then the settled re-read that is judged
+    assert store.get_last_command().verified is True
+    assert len(charge_calls(gw)) == 1
+
+
+def test_verification_abandoned_when_closing_during_settle():
+    gw = SettlingGateway(snap(plugged=True, charging=True, charge_status="InProgress"))
+    engine = Engine(gw, FakeNotifier(), clock=Clock(thu(19)), scheduler=FakeScheduler(), wait=lambda s: True)
+    engine.tick()
+    gw.reads.clear()
+    engine.verify_now()
+    assert gw.reads == [True]  # no judgement on the unsettled read, no retry
+    assert store.get_last_command().verified is False
+    assert len(charge_calls(gw)) == 1

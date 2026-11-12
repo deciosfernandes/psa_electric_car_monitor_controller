@@ -25,6 +25,7 @@ Mode = Literal["charge", "defer"]
 
 RETRY_DELAYS_S = (60, 180, 600)  # wait after failed attempt 1, 2, 3 before re-checking the car
 MAX_ATTEMPTS = len(RETRY_DELAYS_S)
+SETTLE_S = 20  # after the verification wakeup, wait this long before re-reading (as the poller does)
 FALLBACK_PROGRAM_HOUR = (0, 0)
 
 
@@ -88,6 +89,7 @@ class Engine:
         clock: Callable[[], datetime] = utcnow,
         verify_delay_s: int = 60,
         scheduler: Scheduler = start_timer,
+        wait: Callable[[float], bool] | None = None,
     ):
         self.gateway = gateway
         self.notifier = notifier
@@ -99,6 +101,9 @@ class Engine:
         self._plugged: bool | None = None
         self._replugged = False  # cable just plugged back in: (re)send the command even if one was verified
         self._closed = False  # set by close(): every entry point becomes a no-op
+        self._closing = threading.Event()
+        # settle wait outside the lock; True means "closing, stop" (tests inject an instantaneous one)
+        self._wait = wait or self._closing.wait
 
     # ---- public entry points: never raise -------------------------------------------------------------
 
@@ -167,16 +172,31 @@ class Engine:
         later call, so a replaced engine never commands the car through its old gateway."""
         with self._lock:
             self._closed = True
+            self._closing.set()
             self._cancel_round()
 
     def verify_now(self) -> None:
-        """Advance the round in flight: verify the last command, re-send it or give up (timer callback)."""
+        """Advance the round in flight: verify the last command, re-send it or give up (timer callback).
+
+        A verification wakes the car, waits ``SETTLE_S`` without holding the lock (PSA's REST state is only
+        fresh some seconds after a wakeup) and judges the re-read state."""
+        self._advance(None)
+
+    def _advance(self, expected: _Round | None) -> None:
         with self._lock:
-            if self._closed:
-                return
+            r = self._round
+            if self._closed or r is None or (expected is not None and r is not expected):
+                return  # timers of a cancelled or replaced round are ignored
+            seen = (r.phase, r.attempts)
+        if seen[0] == "verify":
+            self._snapshot(refresh=True)  # wakeup; its own result may still be the pre-command state
+            if self._wait(SETTLE_S):
+                return  # closing
+        with self._lock:
+            if self._closed or self._round is not r or (r.phase, r.attempts) != seen:
+                return  # cancelled, replaced or advanced while settling
             try:
-                if self._round is not None:
-                    self._step(self._round)
+                self._step(r)
             except Exception:
                 logger.exception("automation verification failed")
                 self._cancel_round()  # the next tick starts afresh (the last command is still unverified)
@@ -292,15 +312,13 @@ class Engine:
 
     def _arm(self, r: _Round, delay_s: float) -> None:
         def fire() -> None:
-            with self._lock:
-                if self._round is r:  # ignore timers of a cancelled or replaced round
-                    self.verify_now()
+            self._advance(r)  # takes the lock itself, and not across the settle wait
 
         r.timer = self._schedule(delay_s, fire)
 
     def _step(self, r: _Round) -> None:
         r.timer = None
-        car = self._snapshot(refresh=r.phase == "verify")
+        car = self._snapshot(refresh=False)  # a verification already woke the car and let it settle
         if car is not None and car.plugged is False:
             logger.info("car unplugged, dropping pending %s command", r.mode)
             self._round = None
