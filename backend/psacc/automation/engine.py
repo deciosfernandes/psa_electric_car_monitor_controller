@@ -273,7 +273,8 @@ class Engine:
         if ev.kind != "start" and s.id is not None:
             stored = store.get_charge_session(s.id)  # the user may have set a price since the session opened
             s.price_override_eur_kwh = stored.price_override_eur_kwh if stored else None
-            store.save_charge_session(store.recompute_session_cost(s))
+            s.place_price_eur_kwh = stored.place_price_eur_kwh if stored else None  # survives a deleted place
+            store.save_charge_session(store.refresh_session_cost(s))
 
     def _evaluate(self, car: CarSnapshot) -> None:
         # a re-plug forces one command on this evaluation only, also when it returns early (no lingering resend)

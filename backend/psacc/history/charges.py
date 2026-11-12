@@ -27,6 +27,7 @@ class ChargeSession(BaseModel):
     kwh: float | None = None
     cost_eur: float | None = None
     price_override_eur_kwh: float | None = None
+    place_price_eur_kwh: float | None = None  # the "other" place's EUR/kWh when the session was last priced
     partial: bool = False  # already charging when first seen: the true start is unknown
 
 
