@@ -53,3 +53,24 @@ def test_configure_logging_sets_root_info():
     finally:
         root.setLevel(saved[0])
         root.handlers[:] = saved[1]
+
+
+def test_info_logs_carry_no_vin_or_customer_id(caplog):
+    """R2: at INFO, commands, wakeups, subscriptions and publish failures never name the VIN or customer id."""
+    vin, customer = "VF3SECRETVIN00001", "AP-SECRET-CUSTOMER"
+    caplog.set_level(logging.INFO)
+    rc = _client({"access_token": SECRET_ACCESS, "refresh_token": SECRET_REFRESH})
+    rc.account_info.get_mqtt_customer_id.return_value = customer
+    rc.vehicles_list = [MagicMock(vin=vin)]
+    rc._refresh_remote_token(force=True)
+    rc.wakeup(vin)
+    rc.veh_charge_request(vin, 0, 10, "delayed")
+    rc.horn(vin, 2)
+    rc.lights(vin, 10)
+    rc.lock_door(vin, True)
+    rc.preconditioning(vin, True)
+    rc._RemoteClient__on_mqtt_connect(MagicMock(), None, 0, None)
+    rc._refresh_remote_token = MagicMock(return_value=False)
+    rc.horn(vin, 2)  # publish failure path
+    assert caplog.records  # commands are still logged at INFO, generically
+    assert vin not in caplog.text and customer not in caplog.text

@@ -86,7 +86,8 @@ class RemoteClient:
             topics.append(MQTT_EVENT_TOPIC + car.vin)
         for topic in topics:
             client.subscribe(topic)
-            logger.info("subscribe to %s", topic)
+            logger.debug("subscribe to %s", topic)
+        logger.info("MQTT subscribed to %d topics", len(topics))
 
     def _on_mqtt_disconnect(self, client, userdata, result_code):  # pylint: disable=unused-argument
         logger.warning("Disconnected with result code %d", result_code)
@@ -191,12 +192,14 @@ class RemoteClient:
 
     def veh_charge_request(self, vin, hour, minute, charge_type):
         msg = self.mqtt_request(vin, {"program": {"hour": hour, "minute": minute}, "type": charge_type}, "/VehCharge")
-        logger.info("veh_charge_request: %s", msg)
+        logger.info("comando de carga enviado (%s)", charge_type)
+        logger.debug("veh_charge_request: %s", msg)
         return self.publish(msg)
 
     def publish(self, mqtt_request: MQTTRequest, store=True) -> bool:
         if not self._refresh_remote_token():
-            logger.error("Can't publish %s: remote token refresh failed", mqtt_request.topic)
+            logger.error("Can't publish MQTT command: remote token refresh failed")
+            logger.debug("unpublished request: %s", mqtt_request.topic)
             return False
         message = mqtt_request.get_message_to_json(self.remoteCredentials.access_token)
         logger.debug("mqtt publish: %s", mqtt_request)  # never the message: it embeds the access token
@@ -306,19 +309,21 @@ class RemoteClient:
 
     def horn(self, vin, count):
         msg = self.mqtt_request(vin, {"nb_horn": count, "action": "activate"}, "/Horn")
-        logger.info(msg)
+        logger.info("comando de buzina enviado")
+        logger.debug(msg)
         return self.publish(msg)
 
     def lights(self, vin, duration: int):
         msg = self.mqtt_request(vin, {"action": "activate", "duration": duration}, "/Lights")
-        logger.info(msg)
+        logger.info("comando de luzes enviado")
+        logger.debug(msg)
         return self.publish(msg)
 
     @rate_limit(6, 60 * 20)
     def wakeup(self, vin):
-        logger.info("ask wakeup to %s", vin)
+        logger.info("pedido de wakeup enviado")
         msg = self.mqtt_request(vin, {"action": "state"}, "/VehCharge/state")
-        logger.info(msg)
+        logger.debug(msg)
         return self.publish(msg)
 
     def lock_door(self, vin, lock: bool):
@@ -328,7 +333,8 @@ class RemoteClient:
             value = "unlock"
 
         msg = self.mqtt_request(vin, {"action": value}, "/Doors")
-        logger.info(msg)
+        logger.info("comando de trancar enviado (%s)", value)
+        logger.debug(msg)
         return self.publish(msg)
 
     def preconditioning(self, vin, activate: bool):
@@ -341,7 +347,8 @@ class RemoteClient:
         else:
             programs = DEFAULT_PRECONDITIONING_PROGRAM
         msg = self.mqtt_request(vin, {"asap": value, "programs": programs}, "/ThermalPrecond")
-        logger.info("Preconditioning: %s", msg)
+        logger.info("comando de climatização enviado (%s)", value)
+        logger.debug("Preconditioning: %s", msg)
         return self.publish(msg)
 
     def load_otp(self, force_new=False):
