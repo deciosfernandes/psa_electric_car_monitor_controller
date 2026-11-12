@@ -81,9 +81,10 @@ npm run build
 
 **Obrigatório**: execute **uma vez**, com o carro ligado à tomada e a carregar, antes de confiar na
 automação. Confirma como a API trata o adiamento do carregamento, o significado de `charging.nextDelayedTime`
-e se o carro lê a hora programada em hora local dos Açores ou em UTC (teste feito com uma hora programada
-~2 min à frente; só é conclusivo no horário de inverno, quando os Açores estão em UTC-1). Demora cerca de
-15 min.
+e se o carro lê a hora programada em hora local dos Açores ou em UTC (o carro é posto a não carregar e
+reprogramado para ~3 min à frente; só conta um início de carga confirmado com dados frescos a essa hora; só é
+possível no horário de inverno, quando os Açores estão em UTC-1). Demora entre 20 e 60 min (os pedidos de
+"acordar" o carro estão limitados a 6 por 20 min).
 
 ```bash
 cd backend
@@ -92,8 +93,10 @@ cd backend
 ```
 
 Escreve `spike-report.json` (sem tokens, VIN nem posição) na pasta de dados. O que verificar no relatório
-está em `backend/psacc/psa/NOTES.md`; se o veredicto do fuso horário for `utc`, a automação não deve ser
-usada até a hora programada ser corrigida.
+está em `backend/psacc/psa/NOTES.md`. Veredicto do fuso horário: `local` — a automação pode ser usada;
+`utc` — a automação não deve ser usada até a hora programada ser corrigida; `inconclusive` — o teste não
+foi conclusivo (ver `reason`): não confie na automação e volte a correr o script (carro ligado à tomada,
+bateria abaixo do limite, horário de inverno).
 
 ## Licença
 

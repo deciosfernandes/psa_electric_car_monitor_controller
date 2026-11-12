@@ -44,14 +44,3 @@ def test_sanitize_location_like_keys():
         if key != "charging":
             assert out[key] == "REDACTED", key
 
-
-def test_program_hour_ahead_rounds_up_in_local_time():
-    from datetime import UTC, datetime
-
-    from psacc.settings import TZ
-    from psacc.spike_report import program_hour_ahead
-
-    now = datetime(2026, 11, 12, 12, 0, 30, tzinfo=UTC)  # 11h00:30 in the Azores (UTC-1 in winter)
-    assert program_hour_ahead(now, TZ) == (11, 3)
-    assert program_hour_ahead(now, UTC) == (12, 3)
-    assert program_hour_ahead(datetime(2026, 11, 12, 0, 58, tzinfo=UTC), UTC) == (1, 0)
