@@ -169,7 +169,8 @@ class TestAuthFailedFlag(unittest.TestCase):
         from psacc.psa.oauth import OpenIdCredentialManager
 
         manager = OpenIdCredentialManager(ServiceInformation("https://a", "https://t", "id", "secret", ["openid"]))
-        with mock.patch.object(manager, "_refresh_token", side_effect=OAuthError(HTTPStatus.UNAUTHORIZED, "invalid_grant", "")):
+        rejected = OAuthError(HTTPStatus.UNAUTHORIZED, "invalid_grant", "")
+        with mock.patch.object(manager, "_refresh_token", side_effect=rejected):
             self.assertFalse(manager.refresh_token_now())
         self.assertTrue(manager.auth_failed)
         with mock.patch.object(manager, "_refresh_token"):

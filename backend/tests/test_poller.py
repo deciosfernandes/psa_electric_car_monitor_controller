@@ -192,3 +192,34 @@ def test_mqtt_push_handled_on_poller_thread_and_stop_is_prompt():
     finally:
         poller.stop()
     assert not poller._thread.is_alive()
+
+
+def test_push_during_settle_wait_does_not_override_fresh_rest_snapshot():
+    clock = Clock(THU_0648)
+    gateway = RecordingGateway()
+    stale_push = dataclasses.replace(gateway.snap, soc=60.0, charging=False)  # merged onto the pre-wakeup state
+    fresh = dataclasses.replace(gateway.snap, soc=61.0, charging=True, charge_status="InProgress")
+
+    def wait(_s):
+        gateway.emit(stale_push)  # MQTT push arriving while the car wakes up
+        gateway.snap = fresh  # the re-fetch after the wait returns the post-wakeup REST state
+        return False
+
+    engine, notifier = RecordingEngine(), FakeNotifier()
+    poller = Poller(gateway, engine, notifier, clock=clock, wait=wait)
+    poller.run_once()
+    poller._drain_pushed()  # what the next loop iteration does
+    assert engine.statuses == [fresh]
+    assert poller.latest() is fresh
+
+
+def test_failing_engine_does_not_skip_token_saving():
+    calls = []
+    poller, _, engine, _ = make(Clock(THU_0648), save_tokens=lambda: calls.append(1))
+
+    def boom(snap):
+        raise RuntimeError("engine")
+
+    engine.on_status = boom
+    poller.run_once()
+    assert calls == [1]

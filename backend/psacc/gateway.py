@@ -1,5 +1,6 @@
 import dataclasses
 import logging
+import threading
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Callable, Literal, Protocol
@@ -132,7 +133,8 @@ class PsaGateway:
     """CarGateway over the PSA REST API (state) and MQTT (commands, pushed events).
 
     MQTT vehicle events are merged into the last REST snapshot without any network call (they arrive on the
-    paho network thread) and handed to the subscribers, which must not block.
+    paho network thread) and handed to the subscribers, which must not block: they run under ``_lock`` so that
+    a push merged onto an older snapshot is always handed over before ``snapshot()`` installs a newer one.
     """
 
     def __init__(self, client: PSAClient, vin: str):
@@ -140,6 +142,7 @@ class PsaGateway:
         self.vin = vin
         self._subscribers: list[Callable[[CarSnapshot], None]] = []
         self._last: CarSnapshot | None = None
+        self._lock = threading.Lock()  # _last is shared by the paho thread and the poller/engine threads
         self._remote.on_event.append(self._on_mqtt_event)
 
     @property
@@ -160,22 +163,25 @@ class PsaGateway:
         mqtt_lock, mqtt_at = self._remote.lock_state.get(self.vin), self._remote.lock_state_at.get(self.vin)
         if mqtt_lock is not None and mqtt_at is not None and mqtt_at > snap.at:
             snap = dataclasses.replace(snap, locked=mqtt_lock == "Locked")
-        self._last = snap
+        with self._lock:
+            self._last = snap
         return snap
 
     def _on_mqtt_event(self, data: dict) -> None:
-        last = self._last
-        if data.get("vin") != self.vin or last is None:
-            return  # before the first REST snapshot there is nothing to merge into: the next poll catches up
-        snap = merge_mqtt_event(last, data)
-        if snap is None:
+        if data.get("vin") != self.vin:
             return
-        self._last = snap
-        for cb in list(self._subscribers):
-            try:
-                cb(snap)
-            except Exception:
-                logger.exception("snapshot subscriber failed")
+        with self._lock:
+            if self._last is None:
+                return  # before the first REST snapshot there is nothing to merge into: the next poll catches up
+            snap = merge_mqtt_event(self._last, data)
+            if snap is None:
+                return
+            self._last = snap
+            for cb in list(self._subscribers):
+                try:
+                    cb(snap)
+                except Exception:
+                    logger.exception("snapshot subscriber failed")
 
     def set_charge_mode(self, mode: Literal["charge", "defer"], program_hour: tuple[int, int]) -> bool:
         charge_type = IMMEDIATE_CHARGE if mode == "charge" else DELAYED_CHARGE

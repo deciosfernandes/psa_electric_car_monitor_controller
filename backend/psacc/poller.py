@@ -3,7 +3,7 @@
 The background thread wakes at ``min(next refresh, next planned charge/defer event + 5 s)`` and for every
 MQTT-pushed snapshot. Pushed snapshots are queued by the subscriber (which runs on the paho network thread)
 and handed to ``Engine.on_status`` on the poller thread only, because the engine holds its lock across
-REST calls.
+REST calls. Pushes still queued when a poll fetched a REST snapshot are discarded (see ``_discard_pushed``).
 
 A refresh asks the car to wake up, which only makes PSA's REST state fresh some seconds later, so it waits
 ``settle_s`` (interruptible) and fetches again before feeding the engine.
@@ -99,7 +99,8 @@ class Poller:
         self._guard(self._check_auth, auth_error)
         self._guard(self._check_mqtt, now)
         if snap is not None:
-            self._handle(snap)
+            self._discard_pushed()
+            self._guard(self._handle, snap)
         if self._save_tokens is not None:
             self._guard(self._save_tokens)
 
@@ -169,6 +170,23 @@ class Poller:
     def _on_push(self, snap: CarSnapshot) -> None:  # paho network thread: queue only, never block
         self._pushed.put(snap)
         self._wake.set()
+
+    def _discard_pushed(self) -> None:
+        """Drop the pushes queued so far, before handing a fresh REST snapshot to the engine.
+
+        Those merged before the fetch are based on an older REST snapshot (stale charging state), so the fresh
+        REST snapshot must be the last state the engine sees. A newer MQTT value they carried (e.g. soc), or a
+        rare push merged onto the fresh snapshot in the meantime, is picked up again by the next push or poll.
+        """
+        dropped = 0
+        while True:
+            try:
+                self._pushed.get_nowait()
+            except queue.Empty:
+                break
+            dropped += 1
+        if dropped:
+            logger.debug("discarded %d MQTT push(es) superseded by a REST snapshot", dropped)
 
     def _drain_pushed(self) -> None:
         while True:
