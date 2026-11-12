@@ -1,0 +1,83 @@
+from datetime import datetime, timedelta, timezone
+
+import pytest
+
+from psacc import settings, store
+from psacc.store import AppConfig, LastCommand, Override
+
+
+@pytest.fixture(autouse=True)
+def db(tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "DATA_DIR", tmp_path)
+    store.init_db("sqlite://")
+
+
+def utc(h):
+    return datetime(2026, 11, 12, h, 0, tzinfo=timezone.utc)
+
+
+def test_config_defaults():
+    cfg = store.get_config()
+    assert cfg.offset_min == 10
+    assert cfg.battery_limit == 80
+    assert cfg.automation_enabled is True
+    assert cfg.session_secret
+    assert store.get_config().session_secret == cfg.session_secret
+
+
+def test_config_roundtrip():
+    cfg = store.get_config()
+    cfg.battery_limit = 90
+    cfg.vin = "VIN1"
+    store.save_config(cfg)
+    assert store.get_config() == cfg
+    with pytest.raises(ValueError):
+        AppConfig(session_secret="x", battery_limit=10)
+
+
+def test_activity_newest_first():
+    store.log_activity("info", "a", utc(1))
+    store.log_activity("error", "b", utc(3))
+    store.log_activity("action", "c", utc(2))
+    acts = store.recent_activity()
+    assert [a.message for a in acts] == ["b", "c", "a"]
+    assert acts[0].at == utc(3)
+    assert len(store.recent_activity(limit=2)) == 2
+
+
+def test_override_set_and_clear():
+    assert store.get_override() is None
+    o = Override(started_at=utc(5), reason="manual")
+    store.set_override(o)
+    assert store.get_override() == o
+    store.set_override(None)
+    assert store.get_override() is None
+
+
+def test_last_command_roundtrip():
+    assert store.get_last_command() is None
+    c = LastCommand(mode="charge", at=utc(5), verified=True, attempts=2)
+    store.set_last_command(c)
+    assert store.get_last_command() == c
+
+
+def test_battery_samples_since():
+    for h, soc in ((1, 50.0), (2, 60.0), (3, 70.0)):
+        store.add_battery_sample(utc(h), soc, h == 3)
+    got = store.battery_samples(utc(2))
+    assert [s.soc for s in got] == [60.0, 70.0]
+    assert got[1].charging is True and got[0].at == utc(2)
+
+
+def test_psa_file(tmp_path):
+    assert store.get_psa() is None
+    store.save_psa({"a": 1})
+    assert (tmp_path / "psa.json").exists()
+    assert store.get_psa() == {"a": 1}
+
+
+def test_otp_path_follows_data_dir(tmp_path):
+    from psacc.psa.otp import otp
+    assert otp.otp_path() == tmp_path / "otp.bin"
+    otp.save_otp({"x": 1})
+    assert otp.load_otp() == {"x": 1}

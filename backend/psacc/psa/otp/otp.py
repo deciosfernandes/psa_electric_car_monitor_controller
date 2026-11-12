@@ -13,9 +13,9 @@ from Cryptodome.Hash import SHA256
 
 from . import oaep
 from .load import IWData
+from ... import settings
 
 # pylint: disable=invalid-name
-CONFIG_NAME = "otp.bin"
 TIMEOUT_IN_S = 10
 
 logger = logging.getLogger(__name__)
@@ -302,7 +302,12 @@ def encode_oeap(text, key):
     return cipher.encrypt(text)
 
 
-def save_otp(obj, filename="otp.bin"):
+def otp_path():
+    return settings.DATA_DIR / "otp.bin"
+
+
+def save_otp(obj, filename=None):
+    filename = filename or otp_path()
     with open(filename, 'wb') as output:
         pickle.dump(obj, output)
 
@@ -313,7 +318,8 @@ class RenameUnpickler(pickle.Unpickler):
         return super().find_class(renamed_module, name)
 
 
-def load_otp(filename=CONFIG_NAME):
+def load_otp(filename=None):
+    filename = filename or otp_path()
     try:
         with open(filename, 'rb') as input_file:
             try:
