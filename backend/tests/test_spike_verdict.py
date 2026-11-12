@@ -5,6 +5,7 @@ from psacc.settings import TZ
 from psacc.spike_report import (
     Observation,
     WakeupBudget,
+    observation_from,
     probe_outcome,
     probe_target,
     timezone_verdict,
@@ -23,9 +24,31 @@ def stale(read_at: datetime, snapshot_at: datetime, charging: bool) -> Observati
     return Observation(window_start=read_at - timedelta(seconds=60), at=snapshot_at, charging=charging)
 
 
+PRE = woken(P - timedelta(seconds=45), False)  # the woken read just before the program hour
+
+
 def test_start_at_program_hour_is_started():
-    obs = [woken(P + 2 * M, False), woken(P + 5 * M, True)]
+    obs = [PRE, woken(P + 2 * M, False), woken(P + 5 * M, True)]
     assert probe_outcome(obs, P)[0] == "started"
+
+
+def test_start_without_a_fresh_pre_hour_read_is_inconclusive():
+    """A car that starts as soon as the command arrives must never pass for one that started at the hour."""
+    started = [woken(P + 2 * M, True)]
+    outcome, reason = probe_outcome(started, P)
+    assert outcome == "inconclusive" and "before the program hour" in reason
+    # pre-hour read stale, or taken too long before the hour: no evidence either
+    stale_pre = stale(P - timedelta(seconds=30), P - 10 * M, False)
+    assert probe_outcome([stale_pre] + started, P)[0] == "inconclusive"
+    assert probe_outcome([woken(P - 5 * M, False)] + started, P)[0] == "inconclusive"
+    # not_started also needs it
+    assert probe_outcome([woken(P + 2 * M, False), woken(P + 8 * M, False)], P)[0] == "inconclusive"
+
+
+def test_charging_at_the_pre_hour_read_is_inconclusive():
+    obs = [woken(P - timedelta(seconds=45), True), woken(P + 2 * M, True)]
+    outcome, reason = probe_outcome(obs, P)
+    assert outcome == "inconclusive" and "before" in reason
 
 
 def test_charging_seen_before_program_hour_is_inconclusive():
@@ -35,13 +58,13 @@ def test_charging_seen_before_program_hour_is_inconclusive():
 
 
 def test_start_after_the_window_is_inconclusive_not_started():
-    obs = [woken(P + 2 * M, False), woken(P + 8 * M, False), woken(P + 60 * M, True)]
+    obs = [PRE, woken(P + 2 * M, False), woken(P + 8 * M, False), woken(P + 60 * M, True)]
     assert probe_outcome(obs, P)[0] == "inconclusive"
 
 
 def test_no_start_needs_a_fresh_read_after_the_window():
-    assert probe_outcome([woken(P + 2 * M, False), woken(P + 8 * M, False)], P)[0] == "not_started"
-    assert probe_outcome([woken(P + 2 * M, False)], P)[0] == "inconclusive"
+    assert probe_outcome([PRE, woken(P + 2 * M, False), woken(P + 8 * M, False)], P)[0] == "not_started"
+    assert probe_outcome([PRE, woken(P + 2 * M, False)], P)[0] == "inconclusive"
     assert probe_outcome([], P)[0] == "inconclusive"
 
 
@@ -86,3 +109,26 @@ def test_wakeup_budget_sliding_window():
     assert budget.free_at(t0 + 2 * M, 1) == t0 + 20 * M
     assert budget.free_at(t0 + 2 * M, 2) == t0 + 21 * M
     assert budget.take(t0 + 20 * M)
+
+
+def test_freshness_is_judged_on_the_electric_energy_timestamp():
+    """The top-level updatedAt can be fresh while the energy block (source of `charging`) is old."""
+    import json
+    from pathlib import Path
+
+    from psacc.gateway import snapshot_from_status
+    from psacc.psa.models import VehicleStatus
+
+    raw = json.loads((Path(__file__).parent / "data" / "status_v4_17.json").read_text(encoding="utf-8"))
+    now = datetime(2026, 11, 12, 12, 5, tzinfo=UTC)
+    raw["updatedAt"] = now.isoformat()
+    raw["energies"][0]["createdAt"] = (now - 30 * M).isoformat()
+    snap = snapshot_from_status("VIN", VehicleStatus.model_validate(raw))
+    assert snap.at == now and snap.energy_at == now - 30 * M
+    assert not observation_from(snap, window_start=now - timedelta(seconds=30)).fresh
+    raw["energies"][0]["updatedAt"] = now.isoformat()  # an updatedAt on the block wins over its createdAt
+    snap = snapshot_from_status("VIN", VehicleStatus.model_validate(raw))
+    assert observation_from(snap, window_start=now - timedelta(seconds=30)).fresh
+    del raw["energies"][0]["updatedAt"], raw["energies"][0]["createdAt"]
+    snap = snapshot_from_status("VIN", VehicleStatus.model_validate(raw))
+    assert snap.energy_at is None and not observation_from(snap, window_start=now - M).fresh

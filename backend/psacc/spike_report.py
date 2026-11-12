@@ -22,6 +22,7 @@ def probe_target(now: datetime, tz: tzinfo, minutes: int = 3) -> datetime:
 # --- timezone probe verdict (pure; the script only collects the reads) ---
 
 PROBE_WINDOW = timedelta(minutes=8)  # a start counts only if seen between the program hour and this much later
+PRE_HOUR = timedelta(minutes=2)  # a fresh not-charging read must exist this close before the program hour
 
 
 @dataclass(frozen=True)
@@ -41,12 +42,25 @@ class Observation:
         return self.at is not None and self.charging is not None and self.at >= self.window_start
 
 
+def observation_from(snap, window_start: datetime) -> Observation:
+    """Freshness is judged on the electric energy block's timestamp (where `charging` comes from), never on
+    the status' top-level updatedAt, which can be recent while the energy block is old."""
+    return Observation(window_start=window_start, at=snap.energy_at, charging=snap.charging)
+
+
 def probe_outcome(observations: list[Observation], expected_at: datetime,
                   window: timedelta = PROBE_WINDOW) -> tuple[str, str]:
     """("started" | "not_started" | "inconclusive", reason) for one probe whose start is expected at
-    `expected_at`. Only fresh reads count; the first fresh charging read decides, and it must fall inside
-    [expected_at, expected_at + window]. "not_started" needs a fresh not-charging read after the window."""
+    `expected_at`. Only fresh reads count. Any charging read before `expected_at` is inconclusive, and a fresh
+    not-charging read within ``PRE_HOUR`` before it is required (else a car that starts on command arrival
+    would pass for one that started at the hour). The first fresh charging read must then fall inside
+    [expected_at, expected_at + window]; "not_started" needs a fresh not-charging read after the window."""
     fresh = sorted((o for o in observations if o.fresh), key=lambda o: o.at)
+    if any(o.charging and o.at < expected_at for o in fresh):
+        first = next(o for o in fresh if o.charging)
+        return "inconclusive", f"charging seen before the program hour ({first.at.isoformat()})"
+    if not any(expected_at - PRE_HOUR <= o.at < expected_at for o in fresh):
+        return "inconclusive", "no fresh not-charging read just before the program hour"
     for o in fresh:
         if o.charging:
             if o.at < expected_at:

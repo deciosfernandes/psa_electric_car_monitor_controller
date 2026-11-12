@@ -32,6 +32,7 @@ class CarSnapshot:
     longitude: float | None
     locked: bool | None
     precond_on: bool | None
+    energy_at: datetime | None = None  # UTC, timestamp of the electric energy block (source of soc/charging)
 
 
 class CarGateway(Protocol):
@@ -82,6 +83,8 @@ def snapshot_from_status(vin: str, status: VehicleStatus) -> CarSnapshot:
     at = (parse_psa_datetime(status.updated_at) or parse_psa_datetime(electric.updated_at if electric else None)
           or parse_psa_datetime(status.created_at) or datetime.now(timezone.utc))
     charge_status = charging.status if charging else None
+    energy_at = (parse_psa_datetime(electric.updated_at) or parse_psa_datetime(electric.created_at)
+                 if electric else None)
     return CarSnapshot(
         vin=vin,
         at=at,
@@ -96,6 +99,7 @@ def snapshot_from_status(vin: str, status: VehicleStatus) -> CarSnapshot:
         longitude=coordinates[0] if len(coordinates) > 1 else None,
         locked=_locked(status.doors_state.locked_states) if status.doors_state else None,
         precond_on=air_conditioning.status == "Enabled" if air_conditioning and air_conditioning.status else None,
+        energy_at=energy_at,
     )
 
 
@@ -126,7 +130,7 @@ def merge_mqtt_event(last: CarSnapshot, data: dict) -> CarSnapshot | None:
             changes.update(charging=False, charge_status="Disconnected", charge_rate_kmh=0)
     if not changes:
         return None
-    return dataclasses.replace(last, at=at, **changes)
+    return dataclasses.replace(last, at=at, **changes)  # energy_at stays: MQTT does not refresh `charging`
 
 
 class PsaGateway:

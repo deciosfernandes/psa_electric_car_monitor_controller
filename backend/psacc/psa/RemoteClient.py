@@ -276,8 +276,8 @@ class RemoteClient:
             headers=self.headers, timeout=TIMEOUT_IN_S)
         logger.info("SMS code request: HTTP %s", res.status_code)
         if not res.ok:
-            logger.error("SMS code request failed: HTTP %s %s", res.status_code, res.text)
-            raise RemoteException(f"SMS request failed: HTTP {res.status_code} {res.text}")
+            logger.error("SMS code request failed: HTTP %s", res.status_code)  # never the body
+            raise RemoteException(f"SMS request failed: HTTP {res.status_code}")
         return res
 
     # 6 otp by day

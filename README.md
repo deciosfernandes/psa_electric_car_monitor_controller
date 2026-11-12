@@ -82,8 +82,9 @@ npm run build
 **Obrigatório**: execute **uma vez**, com o carro ligado à tomada e a carregar, antes de confiar na
 automação. Confirma como a API trata o adiamento do carregamento, o significado de `charging.nextDelayedTime`
 e se o carro lê a hora programada em hora local dos Açores ou em UTC (o carro é posto a não carregar e
-reprogramado para ~3 min à frente; só conta um início de carga confirmado com dados frescos a essa hora; só é
-possível no horário de inverno, quando os Açores estão em UTC-1). Demora entre 20 e 60 min (os pedidos de
+reprogramado para ~5 min à frente; só conta um início de carga confirmado com dados frescos a essa hora,
+depois de uma leitura fresca sem carga mesmo antes dela; só é possível no horário de inverno, quando os
+Açores estão em UTC-1). Demora entre 20 e 60 min (os pedidos de
 "acordar" o carro estão limitados a 6 por 20 min).
 
 ```bash

@@ -17,7 +17,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from psacc import settings, setup_flow, store  # noqa: E402
-from psacc.gateway import PsaGateway, parse_psa_datetime, snapshot_from_status  # noqa: E402
+from psacc.gateway import PsaGateway  # noqa: E402
 from psacc.psa.RemoteClient import MQTT_EVENT_TOPIC  # noqa: E402
 from psacc.psa.constants import BRAND  # noqa: E402
 from psacc.settings import TZ  # noqa: E402
@@ -26,6 +26,7 @@ from psacc.spike_report import (  # noqa: E402
     Observation,
     WakeupBudget,
     find_keys,
+    observation_from,
     probe_outcome,
     probe_target,
     sanitize,
@@ -39,9 +40,12 @@ SETTLE_S = 20  # after a wakeup, wait this long before reading (the car needs ti
 WOKEN_TOLERANCE = timedelta(seconds=30)  # clock skew allowed between this PC and the car's timestamps
 PLAIN_MAX_AGE = timedelta(seconds=60)  # a plain REST read is evidence only if the snapshot is this recent
 POLL_S = 30  # plain REST reads (no wakeup) between the scheduled wakeups
-# wakeups after the program hour, per probe; the last one just after the window proves "not started"
-PROBE_WAKES = (timedelta(minutes=2), PROBE_WINDOW + timedelta(seconds=30))
-budget = WakeupBudget()  # the script's own count, kept below RemoteClient.wakeup's 6 per 20 min
+PROBE_LEAD_MIN = 5  # program hour this far ahead: room for the pre-hour read
+# wakeups relative to the program hour, per probe: just before it (must show "not charging"), during the
+# window, and just after it (proves "not started")
+PROBE_WAKES = (-timedelta(seconds=45), timedelta(minutes=2), PROBE_WINDOW + timedelta(seconds=30))
+# the script's own count: RemoteClient.wakeup allows 6 per 20 min and RemoteClient.start()'s keepalive used one
+budget = WakeupBudget(limit=5)
 last_mqtt: dict = {"event": None, "precond_state": None, "charging_state": None}
 
 
@@ -82,39 +86,47 @@ def raw_read(gw: PsaGateway, label: str) -> dict:
     return entry
 
 
-def wakeup(gw: PsaGateway) -> bool:
-    """Send a wakeup if the budget allows, then let the car settle. False when no wakeup was sent."""
-    if not budget.take(datetime.now(UTC)):
+def wakeup(gw: PsaGateway, reserve: int = 0) -> bool:
+    """Send a wakeup if the budget allows (keeping `reserve` wakeups for later), then let the car settle.
+    False when no wakeup was sent."""
+    now = datetime.now(UTC)
+    if budget.available(now) <= reserve or not budget.take(now):
         print("  (wakeup budget exhausted: plain read)")
         return False
     try:
-        gw.client.remote_client.wakeup(gw.vin)
+        sent = gw.client.remote_client.wakeup(gw.vin)
     except RateLimitException:
         print("  (wakeup rate limited: plain read)")
+        return False
+    except Exception as exc:
+        print(f"  (wakeup failed: {type(exc).__name__}; plain read)")
+        return False
+    if not sent:
+        print("  (wakeup not sent: plain read)")
         return False
     wait(SETTLE_S)
     return True
 
 
-def observe(gw: PsaGateway, wake: bool) -> tuple[Observation, dict]:
-    """One read; with `wake`, a wakeup + settle first. Returns the observation and its report entry."""
+def observe(gw: PsaGateway, wake: bool, reserve: int = 0) -> tuple[Observation, dict]:
+    """One read; with `wake`, a wakeup + settle first. Returns the observation and its report entry.
+    Freshness is judged on the electric energy block's timestamp; a failed read is never evidence."""
     started = datetime.now(UTC)
-    woken = wake and wakeup(gw)
+    woken = wake and wakeup(gw, reserve)
     window_start = started - WOKEN_TOLERANCE if woken else datetime.now(UTC) - PLAIN_MAX_AGE
-    status = gw.client.get_vehicle_info(gw.vin)
-    if status is None:
-        raise RuntimeError("PSA status unavailable")
-    snap = snapshot_from_status(gw.vin, status)
-    electric = status.electric()
-    # snapshot_from_status falls back to "now" without a PSA timestamp: such a read is never evidence
-    stamped = any(parse_psa_datetime(v) for v in (status.updated_at, electric.updated_at if electric else None,
-                                                  status.created_at))
-    obs = Observation(window_start=window_start, at=snap.at if stamped else None, charging=snap.charging)
-    entry = {"azores_time": datetime.now(TZ).strftime("%H:%M:%S"), "woken": woken,
-             "snapshot_at_azores": snap.at.astimezone(TZ).strftime("%H:%M:%S"), "fresh": obs.fresh,
-             "charging": snap.charging, "status": snap.charge_status, "plugged": snap.plugged}
+    entry = {"azores_time": datetime.now(TZ).strftime("%H:%M:%S"), "woken": woken}
+    try:
+        snap = gw.snapshot()
+    except Exception as exc:  # transient PSA/network failure: no evidence, keep going
+        entry["error"] = type(exc).__name__
+        print(f"  {entry['azores_time']} Azores: read failed ({entry['error']})")
+        return Observation(window_start=window_start, at=None, charging=None), entry
+    obs = observation_from(snap, window_start)
+    energy_at = snap.energy_at.astimezone(TZ).strftime("%H:%M:%S") if snap.energy_at else None
+    entry.update({"energy_at_azores": energy_at, "fresh": obs.fresh, "charging": snap.charging,
+                  "status": snap.charge_status, "plugged": snap.plugged})
     print(f"  {entry['azores_time']} Azores: charging={snap.charging} status={snap.charge_status} "
-          f"snapshot={entry['snapshot_at_azores']} {'fresh' if obs.fresh else 'STALE'}{' (woken)' if woken else ''}")
+          f"energy_at={energy_at} {'fresh' if obs.fresh else 'STALE'}{' (woken)' if woken else ''}")
     return obs, entry
 
 
@@ -183,23 +195,24 @@ def wait_for_budget(n: int) -> None:
 def confirm_not_charging(gw: PsaGateway, test: dict) -> bool:
     """Defer with a program hour ~12 h away (far both in local time and in UTC), then confirm with a fresh
     read that the car is not charging. False when that cannot be confirmed."""
-    wait_for_budget(2 + len(PROBE_WAKES))  # confirmation (up to 2) + the probe's own wakeups
+    wait_for_budget(1 + len(PROBE_WAKES))  # one confirmation wakeup + the probe's own wakeups
     park = (datetime.now(TZ) + timedelta(hours=12)).replace(second=0, microsecond=0)
     print(f"Deferring to {park:%H:%M} Azores so that the car is not charging before the probe")
     accepted = gw.set_charge_mode("defer", (park.hour, park.minute))
     print("  accepted:", accepted)
     wait(WAIT_S)
-    for _ in range(2):
-        obs, entry = observe(gw, wake=True)
+    for attempt in range(3):  # a retry wakes only if the probe's wakeups stay available
+        obs, entry = observe(gw, wake=True, reserve=len(PROBE_WAKES) if attempt else 0)
         test["baseline"].append(entry)
         if obs.fresh:
             return accepted and obs.charging is False
+        wait(POLL_S)
     return False
 
 
 def probe(gw: PsaGateway, tz, label: str) -> dict:
-    """Defer with a program hour ~3 min ahead on a `tz` clock; watch whether charging starts at that instant."""
-    expected = probe_target(datetime.now(UTC), tz)
+    """Defer with a program hour ~5 min ahead on a `tz` clock; watch whether charging starts at that instant."""
+    expected = probe_target(datetime.now(UTC), tz, PROBE_LEAD_MIN)
     hour = expected.astimezone(tz)
     print(f"[{label}] sending defer, program hour {hour:%H:%M} ({tz}) = {expected.astimezone(TZ):%H:%M} Azores")
     result = {"tz": str(tz), "program_hour": f"{hour:%H:%M}", "expected_azores": f"{expected.astimezone(TZ):%H:%M}",
@@ -215,8 +228,9 @@ def probe(gw: PsaGateway, tz, label: str) -> dict:
         observations.append(obs)
         result["timeline"].append(entry)
         if obs.fresh and (obs.charging or obs.at >= expected + PROBE_WINDOW):
-            break  # first fresh start, or fresh proof that nothing started within the window
-        wait(POLL_S)
+            break  # first fresh start (judged below), or fresh proof that nothing started within the window
+        until_wake = (wakes[0] - datetime.now(UTC)).total_seconds() if wakes else POLL_S
+        wait(max(1, min(POLL_S, int(until_wake))))
     if result["accepted"]:
         result["outcome"], result["reason"] = probe_outcome(observations, expected)
     else:
@@ -228,8 +242,9 @@ def probe(gw: PsaGateway, tz, label: str) -> dict:
 def timezone_test(gw: PsaGateway) -> dict:
     """Is the program hour read in Azores local time or in UTC? (only distinguishable while they differ)
 
-    Local probe: program hour = Azores now + ~3 min; a start counts only between that instant and 8 min later.
-    Only if it provably did not start, UTC probe: program hour = UTC now + ~3 min (a car reading local time
+    Local probe: program hour = Azores now + ~5 min; a fresh not-charging read just before it is required,
+    and a start counts only between that instant and 8 min later.
+    Only if it provably did not start, UTC probe: program hour = UTC now + ~5 min (a car reading local time
     would start that one an hour later; a car reading UTC would start the local probe ~23 h later). Each probe
     is preceded by a fresh "not charging" confirmation. Anything unclear gives "inconclusive".
     """
@@ -278,6 +293,10 @@ def main() -> int:
             report["mqtt_last_event"] = last_mqtt["event"]
             report["mqtt_precond_state"] = last_mqtt["precond_state"]
             report["mqtt_charging_state"] = last_mqtt["charging_state"]
+            try:  # PSA rotates the tokens: keep the latest ones for the app and the next run
+                store.save_psa(gw.client.to_dict())
+            except Exception as exc:
+                print("Could not save the PSA tokens:", type(exc).__name__)
             path = settings.DATA_DIR / "spike-report.json"
             path.write_text(json.dumps(sanitize(report, secrets), indent=2, ensure_ascii=False), encoding="utf-8")
             print("Report written to", path)

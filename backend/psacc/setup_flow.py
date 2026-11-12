@@ -61,7 +61,11 @@ def _stored_client() -> PSAClient:
 
 
 def request_sms() -> None:
-    _stored_client().remote_client.get_sms_otp_code()
+    client = _stored_client()
+    try:
+        client.remote_client.get_sms_otp_code()
+    finally:
+        store.save_psa(client.to_dict())  # the access-token refresh rotated the refresh token
 
 
 def activate_otp(sms_code: str, pin: str) -> None:
@@ -73,6 +77,9 @@ def load_gateway() -> PsaGateway | None:
     if data is None or not cfg.vin:
         return None
     client = PSAClient.from_dict(data)
-    if not client.remote_client.start():
-        logger.warning("MQTT did not connect at startup")
+    try:
+        if not client.remote_client.start():
+            logger.warning("MQTT did not connect at startup")
+    finally:
+        store.save_psa(client.to_dict())  # start() refreshes (and so rotates) the PSA tokens
     return PsaGateway(client, cfg.vin)

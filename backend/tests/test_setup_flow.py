@@ -104,3 +104,50 @@ def test_request_sms_without_access_token_and_failed_refresh_raises(monkeypatch)
     with pytest.raises(RemoteException, match="no PSA access token"):
         setup_flow.request_sms()
     post.assert_not_called()
+
+
+STORED = {"refresh_token": "stored-refresh", "client_id": "cid", "client_secret": "cs",
+          "remote_refresh_token": "stored-remote", "customer_id": "AP-1", "realm": "clientsB2CPeugeot",
+          "country_code": "PT", "brand": None, "vehicles": []}
+
+
+@pytest.mark.parametrize("post_ok", [True, False])
+def test_request_sms_persists_rotated_tokens(monkeypatch, post_ok):
+    """PSA rotates the refresh token on refresh: the new one must be stored even if the SMS request fails."""
+    from psacc.psa.oauth import OpenIdCredentialManager
+
+    store.save_psa(STORED)
+
+    def fake_refresh(self):
+        self.refresh_token = "rotated-refresh"
+        self._access_token = "fresh-access"
+        return True
+
+    monkeypatch.setattr(OpenIdCredentialManager, "refresh_token_now", fake_refresh)
+    monkeypatch.setattr("requests.Session.post",
+                        lambda self, url, **kw: MagicMock(ok=post_ok, status_code=202 if post_ok else 500))
+    if post_ok:
+        setup_flow.request_sms()
+    else:
+        with pytest.raises(Exception):
+            setup_flow.request_sms()
+    assert store.get_psa()["refresh_token"] == "rotated-refresh"
+
+
+def test_load_gateway_persists_tokens_rotated_by_start(monkeypatch):
+    from psacc.psa.RemoteClient import RemoteClient
+
+    store.save_psa(STORED)
+    cfg = store.get_config()
+    cfg.vin = "VF3TEST"
+    store.save_config(cfg)
+
+    def fake_start(self):
+        self.manager.refresh_token = "rotated-refresh"
+        self.remoteCredentials.refresh_token = "rotated-remote"
+        return True
+
+    monkeypatch.setattr(RemoteClient, "start", fake_start)
+    assert setup_flow.load_gateway() is not None
+    saved = store.get_psa()
+    assert (saved["refresh_token"], saved["remote_refresh_token"]) == ("rotated-refresh", "rotated-remote")

@@ -38,7 +38,14 @@ class TestSmsOtpCode(unittest.TestCase):
         with self.assertRaises(RemoteException) as ctx:
             remote_client.get_sms_otp_code()
         self.assertIn("401", str(ctx.exception))
-        self.assertIn("invalid_token", str(ctx.exception))
+        self.assertNotIn("invalid_token", str(ctx.exception))  # status code only, never the response body
+
+    def test_sms_request_rejected_logs_status_only(self):
+        remote_client = get_remote_client(500, '{"secret": "SECRET-BODY"}')
+        with self.assertLogs("psacc.psa.RemoteClient", level="INFO") as logs, self.assertRaises(RemoteException):
+            remote_client.get_sms_otp_code()
+        self.assertIn("500", "".join(logs.output))
+        self.assertNotIn("SECRET-BODY", "".join(logs.output))
 
 
 if __name__ == '__main__':
