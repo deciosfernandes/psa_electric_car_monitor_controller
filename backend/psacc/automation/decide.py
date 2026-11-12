@@ -41,6 +41,7 @@ def decide(
     override: Override | None,
     where: Where = "home",
     work_charge_sent: bool = False,
+    place_name: str | None = None,
 ) -> Decision:
     """Plan 1 tariff rules apply only at Casa; never "defer" anywhere else."""
     if not cfg.automation_enabled:
@@ -54,7 +55,7 @@ def decide(
             return Decision("charge", "Carga no Trabalho")
         if override:
             return Decision("charge", "Carga manual ativa")
-        return Decision(None, _NOT_HOME[where])
+        return Decision(None, not_home_reason(where, place_name))
     at_limit = car.soc >= cfg.battery_limit
     if override and at_limit:
         return Decision("defer", f"Limite de {cfg.battery_limit} % atingido (carga manual terminada)", True)

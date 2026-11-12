@@ -789,3 +789,27 @@ def test_engine_records_trip_and_survives_trip_store_failure(monkeypatch):
     monkeypatch.setattr(store, "save_trip", boom)
     engine.on_status(dataclasses.replace(base, at=thu(20, 0), mileage_km=1020.0))
     engine.on_status(dataclasses.replace(base, at=thu(20, 20), mileage_km=1020.0))  # logged, not raised
+
+
+def test_pause_logged_once_per_transition_and_home_return_logged():
+    engine, gw, *_ = make(car=at_place(HOME, plugged=True, charging=False))
+    engine.on_status(gw.snap)
+    assert not [m for m in messages() if "Em pausa" in m or "Em Casa" in m]  # first fix at Casa: nothing to say
+    gw.snap = at_place(OTHER, minutes=30, plugged=True, charging=False)
+    engine.tick()
+    engine.tick()
+    gw.snap = at_place(OTHER, minutes=31, plugged=True, charging=False)
+    engine.tick()
+    assert messages().count("Automação em pausa: Fora de Casa (local desconhecido)") == 1
+    gw.snap = at_place(HOME, minutes=60, plugged=True, charging=False)
+    engine.tick()
+    assert messages().count("Em Casa — automação ativa") == 1
+
+
+def test_pause_logged_when_no_home_defined():
+    for p in store.list_places():
+        store.delete_place(p.id)
+    engine, gw, *_ = make()
+    engine.tick()
+    engine.tick()
+    assert messages().count("Automação em pausa: Defina o local Casa") == 1

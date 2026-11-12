@@ -24,7 +24,7 @@ from ..places import Place, Where, locate, update_fix
 from ..settings import TZ
 from ..store import LastCommand, Override, WorkEpisode
 from ..tariff.schedule import next_vazio_start
-from .decide import Decision, decide
+from .decide import Decision, decide, not_home_reason
 
 logger = logging.getLogger(__name__)
 
@@ -287,7 +287,8 @@ class Engine:
             override = None
         where = self._locate(car, now)
         work_charge_sent = self._work_charge_sent(car, where)
-        decision = decide(now, cfg, store.get_tariff(), car, override, where, work_charge_sent)
+        decision = decide(now, cfg, store.get_tariff(), car, override, where, work_charge_sent,
+                          self.last_place.name if self.last_place else None)
         if decision.clear_override and override is not None:
             store.set_override(None)
         if self._round is not None and self._round.timer is None:
@@ -328,7 +329,14 @@ class Engine:
         if new_fix is not None:
             store.set_position_fix(new_fix)
             fix = new_fix
+        previous = self.last_where
         self.last_where, self.last_place = locate(now, car, fix, store.list_places())
+        if self.last_where != previous:
+            if self.last_where != "home":
+                reason = not_home_reason(self.last_where, self.last_place.name if self.last_place else None)
+                store.log_activity("info", f"Automação em pausa: {reason}", at=now)
+            elif previous is not None:
+                store.log_activity("info", "Em Casa — automação ativa", at=now)
         return self.last_where
 
     def _work_charge_sent(self, car: CarSnapshot, where: Where) -> bool:
