@@ -84,10 +84,11 @@ Image runtime: the entrypoint (root) fixes `/data` ownership, sets it to 0700, `
 - `automation/decide.py`: pure policy (state in, command out). `automation/engine.py` applies it, stores the
   program hour sent with each command (re-sends defer when the next vazio start changes), verifies the effect
   after a ~20 s settle following a wakeup, retries (60/180/600 s), alerts once per failure episode; manual
-  "Carregar agora" override is persisted and cleared on unplug. `Engine.close()` is terminal. Tariff rules apply
-  only at Casa; at Trabalho "charge" is sent once per plug-in episode (respects the switch, ignores the battery
-  limit); never "defer" outside Casa; "Carregar agora" works everywhere. The engine locates the car once per
-  snapshot (`engine.last_where`/`last_place`).
+  "Carregar agora" override is persisted and cleared on unplug. `Engine.close()` is terminal. The battery limit
+  (default 80%) applies everywhere while charging (independent of the tariff automation switch; controlled by its own
+  limit switch); tariff rules apply only at Casa; at Trabalho "charge" is sent once per plug-in episode below the limit;
+  outside Casa "defer" is sent only to enforce the battery limit; "Carregar agora" works everywhere. The engine locates
+  the car once per snapshot (`engine.last_where`/`last_place`).
 - `history/`: `charges.py` (ChargeDetector: sessions, `partial` when already charging on first sight), `cost.py`
   (home split per tariff period; work 0 €; other = place price; unknown = null), `trips.py` (TripDetector from
   the odometer; MQTT-only updates ignored; kWh from the SoC drop, approximate). Fed from `Engine.on_status` with

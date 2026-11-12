@@ -8,6 +8,7 @@ import { azoresNow } from '../lib/tariff'
 
 interface Automation {
   enabled: boolean
+  battery_limit_enabled: boolean
   offset_min: number
   battery_limit: number
 }
@@ -57,7 +58,7 @@ function SettingsCard({ saved }: { saved: Automation }) {
       <div className="mt-3 grid gap-5 md:grid-cols-3">
         <div>
           <div className="text-xs font-semibold" id="auto-switch">
-            Automação
+            Automação (horário em Casa)
           </div>
           <button
             role="switch"
@@ -83,18 +84,37 @@ function SettingsCard({ saved }: { saved: Automation }) {
           />
           <span className="mt-1 block text-[11px] font-normal text-muted">Antes do fim do vazio ligar o diferido; depois do início, desligar (0–60).</span>
         </label>
-        <label className="block text-xs font-semibold">
-          Limite da bateria: {form.battery_limit} %
+        <div>
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold" id="limit-switch">
+              Limite da bateria: {form.battery_limit} %
+            </span>
+            <button
+              role="switch"
+              aria-checked={form.battery_limit_enabled}
+              aria-labelledby="limit-switch"
+              onClick={() => edit({ battery_limit_enabled: !form.battery_limit_enabled })}
+              className={`inline-flex h-6 w-11 items-center rounded-full p-0.5 transition-colors ${form.battery_limit_enabled ? 'bg-primary' : 'bg-line'}`}
+            >
+              <span className={`h-5 w-5 rounded-full bg-white shadow transition-transform ${form.battery_limit_enabled ? 'translate-x-5' : ''}`} />
+            </button>
+          </div>
           <input
             type="range"
             min={50}
             max={100}
             step={1}
-            className="mt-3 w-full accent-[var(--primary)]"
+            disabled={!form.battery_limit_enabled}
+            className="mt-3 w-full accent-[var(--primary)] disabled:opacity-40"
             value={form.battery_limit}
             onChange={(e) => edit({ battery_limit: Number(e.target.value) })}
           />
-        </label>
+          <span className="mt-1 block text-[11px] font-normal text-muted">
+            {form.battery_limit_enabled
+              ? `Aplica-se sempre em carga (em Casa e fora de Casa: só o limite de ${form.battery_limit} %).`
+              : 'Limite desativado.'}
+          </span>
+        </div>
       </div>
       {!offsetOk && <div className="mt-2 text-xs text-danger-ink">O desvio tem de ser um número inteiro entre 0 e 60 minutos.</div>}
       <ErrorBox message={save.isError ? errorText(save.error) : null} />

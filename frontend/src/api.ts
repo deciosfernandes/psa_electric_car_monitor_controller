@@ -63,7 +63,7 @@ export interface Status {
   position_age_min: number | null
   period: PeriodType
   next_event: ScheduleEvent | null
-  automation: { enabled: boolean; offset_min: number; battery_limit: number }
+  automation: { enabled: boolean; battery_limit_enabled: boolean; offset_min: number; battery_limit: number }
   override: Override | null
   last_command: LastCommand | null
   mqtt_connected: boolean

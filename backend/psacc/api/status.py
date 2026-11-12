@@ -37,6 +37,7 @@ def status(request: Request) -> dict:
             "next_event": events[0] if events else None,
             "automation": {
                 "enabled": cfg.automation_enabled,
+                "battery_limit_enabled": cfg.battery_limit_enabled,
                 "offset_min": cfg.offset_min,
                 "battery_limit": cfg.battery_limit,
             },

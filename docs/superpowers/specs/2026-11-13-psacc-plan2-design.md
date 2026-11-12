@@ -153,3 +153,20 @@ position inside the work radius) the app sends **"charge" once** for that plug-i
 - Respects the automation switch (off → nothing sent) but **not** the battery limit (work charging is free and
   the owner wants it) — ⓑ unless owner later asks otherwise; activity log "Carga no Trabalho iniciada".
 - Never sends "defer" outside Casa.
+
+## 12. Owner decision — limit everywhere (12/11/2026)
+
+Decision (overrides §7.2, §11 and controller ruling 6 where they conflict):
+"Embora as automações da hora só aconteçam em casa, o limite dos 80% deve acontecer SEMPRE que o carro está em carga independentemente do sítio ou fonte."
+
+- The battery limit (`AppConfig.battery_limit`, default 80 %) is enforced at **every** `where` (home, work, other,
+  unknown, unset), whatever started the charge (tariff automation, work charge, manual "Carregar agora", a public
+  charger, or the car itself).
+- The tariff/time rules remain Casa-only.
+- A dedicated limit switch (`AppConfig.battery_limit_enabled`, default True) controls limit enforcement. The general
+  automation switch (`AppConfig.automation_enabled`) controls tariff and location charging automations. Turning off
+  the automation switch does not disable the battery limit.
+- Outside Casa, "defer" is sent **only** to enforce the battery limit, and only while the car is (or may be)
+  charging (`car.charging is not False`). Once stopped (`car.charging is False`), no command is sent (`None`).
+- Failure alert text for the limit anywhere: "⚠️ PSACC: não consegui parar a carga no limite de N %."
+- At Trabalho, the work charge episode remains marked after a limit stop (no second work charge in the same episode).

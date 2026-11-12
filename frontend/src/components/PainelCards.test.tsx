@@ -16,7 +16,7 @@ const car = (over: Partial<CarSnapshot> = {}): CarSnapshot => ({
 })
 const status = (over: Partial<Status> = {}): Status => ({
   car: car(), where: 'home', place_name: 'Casa', paused_reason: null, mileage_km: 37256.4, position_age_min: 3, period: 'vazio', next_event: null,
-  automation: { enabled: true, offset_min: 10, battery_limit: 80 }, override: null, last_command: null,
+  automation: { enabled: true, battery_limit_enabled: true, offset_min: 10, battery_limit: 80 }, override: null, last_command: null,
   mqtt_connected: true, psa_connected: true, updated_at: '2026-11-12T10:00:00Z', ...over,
 })
 const wrap = (ui: React.ReactNode) => render(<QueryClientProvider client={new QueryClient()}>{ui}</QueryClientProvider>)
@@ -36,7 +36,7 @@ describe('Painel cards', () => {
     const [url, init] = f.mock.calls[0]
     expect(url).toBe('/api/automation')
     expect(init?.method).toBe('PUT')
-    expect(JSON.parse(init?.body as string)).toEqual({ enabled: false, offset_min: 10, battery_limit: 80 })
+    expect(JSON.parse(init?.body as string)).toEqual({ enabled: false, battery_limit_enabled: true, offset_min: 10, battery_limit: 80 })
   })
 
   it.each([
@@ -53,6 +53,7 @@ describe('Painel cards', () => {
     wrap(<AutomationCard status={status({ where: 'work', last_command: deferred })} run={vi.fn()} pending={null} />)
     expect(screen.getByText(/só em Casa/)).toBeTruthy()
     expect(screen.getByText('Programa diferido ativo no carro')).toBeTruthy()
+    expect(screen.getByText(/fora de Casa: só o limite de 80 %/)).toBeTruthy()
     cleanup()
     wrap(<AutomationCard status={status({ last_command: deferred })} run={vi.fn()} pending={null} />)
     expect(screen.queryByText('Programa diferido ativo no carro')).toBeNull()

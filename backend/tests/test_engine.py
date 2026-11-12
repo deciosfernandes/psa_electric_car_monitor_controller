@@ -7,7 +7,7 @@ from psacc import settings, store
 from psacc.automation.engine import RETRY_DELAYS_S, SETTLE_S, Engine
 from psacc.places import Place
 from psacc.settings import TZ
-from psacc.store import AppConfig
+from psacc.store import AppConfig, WorkEpisode
 from psacc.tariff.model import Season, Slot, Tariff
 from tests.fakes import FakeGateway, default_snapshot
 
@@ -664,16 +664,112 @@ def test_work_charge_failure_alert_text():
     assert messages("error") == ["Não consegui iniciar a carga no Trabalho após 3 tentativas (Carga no Trabalho)"]
 
 
-def test_no_defer_outside_home():
+def test_tariff_defer_never_sent_outside_home():
+    """Outside Casa, defer is NEVER sent for tariff reasons; below the limit, nothing is deferred."""
     add_work()
-    for latlon, soc in ((OTHER, 50.0), (OTHER, 95.0), (WORK, 95.0)):
+    for latlon in (OTHER, WORK):
         store.set_position_fix(None)
-        store.set_work_episode(None)
-        engine, gw, *_ = make(car=at_place(latlon, plugged=True, charging=True, charge_status="InProgress", soc=soc))
+        store.set_work_episode(WorkEpisode(charge_sent_at=datetime.now(UTC)))  # work charge already done
+        engine, gw, *_ = make(car=at_place(latlon, plugged=True, charging=True, charge_status="InProgress", soc=50.0))
         engine.on_status(gw.snap)
         engine.verify_now()
         engine.tick()
         assert [c for c in charge_calls(gw) if c[1] == "defer"] == []
+
+
+def test_limit_defer_outside_home_sent_and_verified():
+    """Outside Casa, defer IS sent to enforce the battery limit when charging at or above the limit."""
+    add_work()
+    for latlon in (OTHER, WORK):
+        store.set_position_fix(None)
+        store.set_work_episode(None)
+        store.set_last_command(None)
+        car = at_place(latlon, plugged=True, charging=True, charge_status="InProgress", soc=95.0)
+        engine, gw, notifier, *_ = make(car=car)
+        engine.on_status(gw.snap)
+        assert [c for c in charge_calls(gw) if c[1] == "defer"] == [("set_charge_mode", "defer", (0, 10))]
+        # car stops charging: verification succeeds
+        gw.snap = dataclasses.replace(gw.snap, charging=False, charge_status="Stopped")
+        engine.verify_now()
+        assert store.get_last_command().verified is True
+        assert "Limite de 80 % atingido → diferido ligado" in messages("action")
+        # subsequent tick with car stopped does not send another defer
+        engine.tick()
+        assert [c for c in charge_calls(gw) if c[1] == "defer"] == [("set_charge_mode", "defer", (0, 10))]
+
+
+def test_limit_defer_at_work_not_cancelled_by_not_home_guard_and_alerts_on_failure():
+    """A limit defer round away from Casa must not be cancelled by the not-home guard, and alerts on failure."""
+    add_work()
+    store.set_position_fix(None)
+    store.set_work_episode(None)
+    car = at_place(WORK, plugged=True, charging=True, charge_status="InProgress", soc=95.0)
+    engine, gw, notifier, *_ = make(car=car)
+    gw.fail_next = 3
+    engine.on_status(gw.snap)
+    assert len([c for c in charge_calls(gw) if c[1] == "defer"]) == 1
+    # 3 failed attempts: the not-home guard must not drop the defer round
+    for _ in range(3):
+        engine.verify_now()
+    assert len([c for c in charge_calls(gw) if c[1] == "defer"]) == 3
+    assert notifier.alerts == ["⚠️ PSACC: não consegui parar a carga no limite de 80 %."]
+    err = "Não consegui parar a carga no limite de 80 % após 3 tentativas (Limite de 80 % atingido)"
+    assert messages("error") == [err]
+
+
+def test_limit_defer_retry_when_car_keeps_charging():
+    """If the car keeps charging after attempt 1, the limit defer is retried (not dropped) and succeeds when applied."""
+    add_work()
+    store.set_position_fix(None)
+    store.set_work_episode(None)
+    engine, gw, *_ = make(car=at_place(WORK, plugged=True, charging=True, charge_status="InProgress", soc=95.0))
+    engine.on_status(gw.snap)
+    assert len([c for c in charge_calls(gw) if c[1] == "defer"]) == 1
+    # attempt 1 verify: car still charging -> enters retry phase
+    engine.verify_now()
+    # attempt 2 retry: re-sends defer
+    engine.verify_now()
+    assert len([c for c in charge_calls(gw) if c[1] == "defer"]) == 2
+    # car now stopped charging -> attempt 2 verified
+    gw.snap = dataclasses.replace(gw.snap, charging=False, charge_status="Stopped")
+    engine.verify_now()
+    assert store.get_last_command().verified is True
+    assert store.get_last_command().attempts == 2
+    assert "Limite de 80 % atingido → diferido ligado" in messages("action")
+
+
+def test_no_second_work_charge_after_limit_stop():
+    """After stopping at the limit at Trabalho, no second work charge is sent in the same episode."""
+    add_work()
+    store.set_position_fix(None)
+    store.set_work_episode(None)
+    engine, gw, *_ = make(car=at_place(WORK, plugged=True, charging=False, soc=70.0))
+    # 1. plugs in at work below limit: work charge sent
+    engine.on_status(gw.snap)
+    assert [c[1] for c in charge_calls(gw)] == ["charge"]
+    gw.snap = dataclasses.replace(gw.snap, charging=True, charge_status="InProgress")
+    engine.verify_now()
+    assert store.get_last_command().verified is True
+    # 2. charges up to 80%: limit defer sent
+    gw.snap = dataclasses.replace(gw.snap, soc=80.0)
+    engine.on_status(gw.snap)
+    assert [c[1] for c in charge_calls(gw)] == ["charge", "defer"]
+    gw.snap = dataclasses.replace(gw.snap, charging=False, charge_status="Stopped")
+    engine.verify_now()
+    assert store.get_last_command().verified is True
+    # 3. car remains plugged at work: no second work charge sent
+    engine.tick()
+    engine.on_status(gw.snap)
+    assert [c[1] for c in charge_calls(gw)] == ["charge", "defer"]
+
+
+def test_limit_defer_enforced_when_automation_disabled():
+    """Limit applies even when tariff automation is disabled."""
+    add_work()
+    store.save_config(AppConfig(automation_enabled=False))
+    engine, gw, *_ = make(car=at_place(WORK, plugged=True, charging=True, charge_status="InProgress", soc=85.0))
+    engine.on_status(gw.snap)
+    assert [c for c in charge_calls(gw) if c[1] == "defer"] == [("set_charge_mode", "defer", (0, 10))]
 
 
 def test_no_command_without_home_place_or_position():

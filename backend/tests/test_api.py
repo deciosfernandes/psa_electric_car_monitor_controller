@@ -202,7 +202,7 @@ def test_status_shape(logged):
     assert body["where"] in ("unset", "unknown")  # no snapshot evaluated yet
     assert body["place_name"] is None
     assert body["period"] in ("vazio", "cheias", "ponta")
-    assert body["automation"] == {"enabled": True, "offset_min": 10, "battery_limit": 80}
+    assert body["automation"] == {"enabled": True, "battery_limit_enabled": True, "offset_min": 10, "battery_limit": 80}
     assert body["mqtt_connected"] is True
     assert body["next_event"]["action"] in ("charge", "defer")
     assert datetime.fromisoformat(body["next_event"]["at"]).utcoffset() is not None
@@ -256,11 +256,24 @@ def test_put_automation_out_of_range_422(logged):
     assert isinstance(r.json()["detail"], str)
     r = logged.put("/api/automation", json={"enabled": True, "offset_min": 10, "battery_limit": 20})
     assert r.status_code == 422
-    assert logged.get("/api/automation").json() == {"enabled": True, "offset_min": 10, "battery_limit": 80}
+    assert logged.get("/api/automation").json() == {
+        "enabled": True,
+        "battery_limit_enabled": True,
+        "offset_min": 10,
+        "battery_limit": 80,
+    }
 
-    ok = logged.put("/api/automation", json={"enabled": False, "offset_min": 15, "battery_limit": 90})
+    ok = logged.put(
+        "/api/automation",
+        json={"enabled": False, "battery_limit_enabled": False, "offset_min": 15, "battery_limit": 90},
+    )
     assert ok.status_code == 200
-    assert logged.get("/api/automation").json() == {"enabled": False, "offset_min": 15, "battery_limit": 90}
+    assert logged.get("/api/automation").json() == {
+        "enabled": False,
+        "battery_limit_enabled": False,
+        "offset_min": 15,
+        "battery_limit": 90,
+    }
 
 
 def test_charge_now_sets_override(logged):
