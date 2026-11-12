@@ -1,7 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
+import { lazy, Suspense, useState } from 'react'
 import { apiGet, apiSend } from '../api'
-import { PlacesEditor } from '../components/PlacesEditor'
 import { SetupWizard } from '../components/SetupWizard'
 
 interface Settings {
@@ -10,6 +9,8 @@ interface Settings {
   refresh_min: number
   battery_capacity_kwh: number
 }
+
+const PlacesEditor = lazy(() => import('../components/PlacesEditor').then((m) => ({ default: m.PlacesEditor })))
 
 const errorText = (e: unknown) => (e instanceof Error ? e.message : 'Erro inesperado')
 const Saved = () => <span className="text-[11px] font-semibold text-ok-ink">Guardado</span>
@@ -288,7 +289,9 @@ export default function Definicoes() {
           <CapacityCard saved={settings.data} />
         </>
       )}
-      <PlacesEditor />
+      <Suspense fallback={<p>A carregar locais…</p>}>
+        <PlacesEditor />
+      </Suspense>
       <PasswordCard />
     </section>
   )

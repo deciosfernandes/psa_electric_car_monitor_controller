@@ -1,14 +1,16 @@
+import { lazy, Suspense } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter, Route, Routes } from 'react-router'
 import { Shell } from './layout/Shell'
-import Cargas from './pages/Cargas'
-import Consumo from './pages/Consumo'
-import Viagens from './pages/Viagens'
 import Automacao from './pages/Automacao'
 import Controlo from './pages/Controlo'
 import Definicoes from './pages/Definicoes'
 import Login from './pages/Login'
 import Painel from './pages/Painel'
+
+const Cargas = lazy(() => import('./pages/Cargas'))
+const Consumo = lazy(() => import('./pages/Consumo'))
+const Viagens = lazy(() => import('./pages/Viagens'))
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } } })
 
@@ -16,6 +18,7 @@ export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
+        <Suspense fallback={<p className="p-6">A carregar…</p>}>
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route element={<Shell />}>
@@ -28,6 +31,7 @@ export default function App() {
             <Route path="definicoes" element={<Definicoes />} />
           </Route>
         </Routes>
+        </Suspense>
       </BrowserRouter>
     </QueryClientProvider>
   )

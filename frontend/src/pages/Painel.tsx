@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
+import { lazy, Suspense } from 'react'
 import { apiGet, type Activity, type BatterySample, type Tariff } from '../api'
 import { ActivityList } from '../components/ActivityList'
-import { BatteryChart } from '../components/BatteryChart'
 import { AutomationCard, CableCard, HealthCard, HomeBanner, MileageCard } from '../components/PainelCards'
 import { QuickActions } from '../components/QuickActions'
 import { StatusPill } from '../components/StatusPill'
@@ -10,6 +10,8 @@ import { useControl } from '../components/useControl'
 import { fmtHour, fmtKm } from '../format'
 import { pillState } from '../lib/pill'
 import { useStatus } from '../useStatus'
+
+const BatteryChart = lazy(() => import('../components/BatteryChart').then((m) => ({ default: m.BatteryChart })))
 
 const REFRESH = 30_000
 export default function Painel() {
@@ -81,7 +83,9 @@ export default function Painel() {
       <div className="mt-[14px] grid gap-[14px] lg:grid-cols-[2fr_1fr]">
         <div className="card">
           <div className="label">Bateria · últimas 24h</div>
-          <BatteryChart samples={battery.data ?? []} />
+          <Suspense fallback={null}>
+            <BatteryChart samples={battery.data ?? []} />
+          </Suspense>
         </div>
         <div className="card">
           <div className="label">Atividade</div>
