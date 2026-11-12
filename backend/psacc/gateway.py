@@ -110,9 +110,9 @@ def _number(value) -> float | None:
 def merge_mqtt_event(last: CarSnapshot, data: dict) -> CarSnapshot | None:
     """Apply an MQTT vehicle event to the last REST snapshot; None when it is older or carries nothing usable.
 
-    Only the fields whose MQTT meaning is known are taken (``soc_batt``, ``autonomy_zev``, ``cable_detected``);
-    the charging status is not mapped from MQTT (its encoding is undocumented), except that an unplugged car
-    cannot be charging.
+    Only ``soc_batt`` and ``autonomy_zev`` are taken. ``plugged``/``charging`` come from REST only: on a real
+    e-208 the event said ``cable_detected=0`` while the car was plugged in (rate 28, remaining_time 280), so neither
+    ``cable_detected`` nor the undocumented charging encoding is trusted.
     """
     at = parse_event_date(data.get("date"))
     if at < last.at:
@@ -123,14 +123,9 @@ def merge_mqtt_event(last: CarSnapshot, data: dict) -> CarSnapshot | None:
         changes["soc"] = soc
     if (autonomy := _number(charging_state.get("autonomy_zev"))) is not None:
         changes["range_km"] = autonomy
-    cable = charging_state.get("cable_detected")
-    if cable in (0, 1):
-        changes["plugged"] = bool(cable)
-        if not cable:
-            changes.update(charging=False, charge_status="Disconnected", charge_rate_kmh=0)
     if not changes:
         return None
-    return dataclasses.replace(last, at=at, **changes)  # energy_at stays: MQTT does not refresh `charging`
+    return dataclasses.replace(last, at=at, **changes)  # energy_at stays: MQTT does not refresh plugged/charging
 
 
 class PsaGateway:

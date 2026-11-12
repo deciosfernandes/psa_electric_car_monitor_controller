@@ -1,0 +1,103 @@
+{
+  "date": "2026-11-12T13:40:15Z",
+  "etat_res_elec": 0,
+  "precond_state": {
+    "available": 1,
+    "programs": {
+      "program1": {
+        "hour": 0,
+        "minute": 0,
+        "on": 0,
+        "day": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "program2": {
+        "hour": 0,
+        "minute": 0,
+        "on": 0,
+        "day": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "program3": {
+        "hour": 0,
+        "minute": 0,
+        "on": 0,
+        "day": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "program4": {
+        "hour": 0,
+        "minute": 0,
+        "on": 0,
+        "day": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    "asap": 0,
+    "status": 0,
+    "aff": 1
+  },
+  "charging_state": {
+    "program": {
+      "hour": 0,
+      "minute": 30
+    },
+    "available": 1,
+    "remaining_time": 280,
+    "rate": 28,
+    "cable_detected": 0,
+    "soc_batt": 48,
+    "autonomy_zev": 134,
+    "type": 0,
+    "aff": 1,
+    "hmi_state": 1,
+    "mode": 0
+  },
+  "stolen_state": 0,
+  "vin": "VIN",
+  "reason": 4,
+  "signal_quality": 4,
+  "sev_stop_date": "2026-11-12T12:46:09Z",
+  "fds": [
+    "NBM01",
+    "NAO01",
+    "NDR01",
+    "NAS01",
+    "NCG01",
+    "NAE01"
+  ],
+  "sev_state": 0,
+  "obj_counter": 4,
+  "privacy_customer": "REDACTED",
+  "privacy_applicable": 0,
+  "privacy_applicable_max": 2,
+  "superlock_state": 0
+}

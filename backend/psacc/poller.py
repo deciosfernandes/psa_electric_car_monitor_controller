@@ -154,13 +154,15 @@ class Poller:
 
     def _wake_wanted(self, now: datetime, urgent: bool) -> bool:
         latest = self._latest
-        if latest is not None and latest.plugged is False and now - latest.at < STALE_AFTER:
+        # plugged/charging come from REST only (MQTT pushes advance `at`, not them): judge them on energy_at
+        rest_at = latest and (latest.energy_at or latest.at)
+        if latest is not None and latest.plugged is False and now - rest_at < STALE_AFTER:
             return False  # unplugged: the car cannot charge, nothing to enforce (older than that: unknown)
         if urgent or self.engine.verification_pending():
             return True
         if any(ev.at <= now < ev.at + WAKE_AFTER_EVENT for ev in self._events(now)):
             return True
-        snapshot_stale = latest is None or now - latest.at >= STALE_AFTER
+        snapshot_stale = latest is None or now - rest_at >= STALE_AFTER
         return snapshot_stale and (self._last_wakeup is None or now - self._last_wakeup >= STALE_AFTER)
 
     def _refresh_due(self, now: datetime) -> bool:

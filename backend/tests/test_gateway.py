@@ -126,10 +126,23 @@ def test_mqtt_event_merges_into_last_snapshot():
     on_event({"vin": "VIN", "date": "2024-08-01T11:00:00Z", "charging_state": {"soc_batt": 70, "autonomy_zev": 150}})
     assert received[-1] == dataclasses.replace(rest, at=datetime(2024, 8, 1, 11, tzinfo=timezone.utc), soc=70.0,
                                                range_km=150)
+    count = len(received)
     on_event({"vin": "VIN", "date": "2024-08-01T11:05:00Z", "charging_state": {"cable_detected": 0}})
-    unplugged = received[-1]
-    assert (unplugged.soc, unplugged.plugged, unplugged.charging, unplugged.charge_status) == (
-        70.0, False, False, "Disconnected")
+    assert len(received) == count  # cable_detected is not a plug indicator: nothing usable
+
+
+def test_real_mqtt_event_keeps_rest_plugged_and_charging():
+    """Owner run: the car WAS plugged in, yet MQTT said cable_detected=0 (rate=28, remaining_time=280)."""
+    gateway, client, received = _mqtt_gateway()
+    rest = gateway.snapshot()  # REST: plugged, InProgress
+    event = json.loads((DATA / "mqtt_event_e208.json").read_text(encoding="utf-8"))
+    assert event["charging_state"]["cable_detected"] == 0
+    client.remote_client.on_event[0](event)
+    merged = received[-1]
+    assert (merged.soc, merged.range_km) == (48.0, 134)
+    assert (merged.plugged, merged.charging, merged.charge_status, merged.charge_rate_kmh) == (
+        rest.plugged, rest.charging, rest.charge_status, rest.charge_rate_kmh)
+    assert merged.energy_at == rest.energy_at
 
 
 def test_mqtt_event_subscriber_errors_are_contained():

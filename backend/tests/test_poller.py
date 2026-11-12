@@ -363,3 +363,17 @@ def test_plug_in_push_triggers_immediate_wakeup():
     gateway.snap = plugged
     poller.run_once()
     assert gateway.refreshes == [True, False, True, False]
+
+
+def test_mqtt_pushes_do_not_keep_rest_unplugged_fresh():
+    """MQTT pushes advance `at` but never refresh plugged (REST only): its freshness is judged on energy_at."""
+    clock = Clock(THU_1200)
+    poller, gateway, *_ = make(clock)
+    at_clock(gateway, clock, plugged=False, charging=False, charge_status="Disconnected", energy_at=clock.now)
+    poller.run_once()  # 12h00: startup wake; REST reports unplugged at 12h00
+    for _ in range(12):  # 12h05 .. 13h00: an MQTT soc push every 5 min, then a plain REST poll still at 12h00
+        clock.advance(minutes=5)
+        gateway.emit(dataclasses.replace(gateway.snap, at=clock.now))
+        poller._drain_pushed()
+        poller.run_once()
+    assert gateway.refreshes[-2:] == [True, False]  # 13h00: "unplugged" is 60 min old -> unknown -> wakeup
