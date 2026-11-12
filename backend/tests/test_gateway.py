@@ -152,3 +152,39 @@ def test_auth_ok_reflects_token_refresh_failures():
     client.remote_client.auth_failed = False
     client.manager.auth_failed = True
     assert gateway.auth_ok() is False
+
+
+def test_schedule_as_list_does_not_reject_status():
+    """Real e-208 payload: `charging.schedule` is `[]`, which used to reject the whole VehicleStatus."""
+    snap = snapshot_from_status("VIN", load("status_schedule_list.json"))
+    assert (snap.soc, snap.plugged, snap.charging, snap.charge_status) == (61.5, True, True, "InProgress")
+    assert snap.next_delayed_time == "PT22H30M"
+
+
+def test_snapshot_through_rest_parses_schedule_list():
+    from psacc.psa.rest import PsaRest
+    rest = PsaRest(MagicMock(), "cid", "realm")
+    rest.get = MagicMock(return_value=json.loads((DATA / "status_schedule_list.json").read_text(encoding="utf-8")))
+    assert rest.status("vid").electric().charging_info().plugged is True
+
+
+def test_wrong_typed_leaves_become_none_without_rejecting_status():
+    raw = json.loads((DATA / "status_v4_17.json").read_text(encoding="utf-8"))
+    charging = raw["energies"][0]["extension"]["electric"]["charging"]
+    charging.update(chargingRate="fast", plugged={"x": 1}, schedule="weird", nextDelayedTime=12)
+    raw["doorsState"] = ["Locked"]
+    raw["lastPosition"] = {"geometry": {"coordinates": "nowhere"}}
+    raw["preconditioning"] = {"airConditioning": 3}
+    raw["updatedAt"] = 5
+    raw["energies"].insert(0, "garbage")
+    snap = snapshot_from_status("VIN", VehicleStatus.model_validate(raw))
+    assert (snap.soc, snap.charge_status, snap.charging) == (61.5, "InProgress", True)
+    assert snap.plugged is None and snap.charge_rate_kmh is None and snap.next_delayed_time is None
+    assert snap.locked is None and snap.latitude is None and snap.precond_on is None
+    assert snap.energy_at == datetime(2024, 8, 1, 10, 15, 30, tzinfo=timezone.utc)
+
+
+def test_wrong_typed_soc_becomes_none():
+    raw = {"energies": [{"type": "Electric", "level": "n/a", "autonomy": [], "extension": {"electric": "x"}}]}
+    snap = snapshot_from_status("VIN", VehicleStatus.model_validate(raw))
+    assert snap.soc is None and snap.range_km is None and snap.plugged is None

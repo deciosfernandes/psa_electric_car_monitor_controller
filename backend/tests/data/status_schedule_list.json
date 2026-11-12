@@ -1,0 +1,82 @@
+{
+  "_links": {
+    "self": {
+      "href": "https://api.groupe-psa.com/connectedcar/v4/user/vehicles/vid/status"
+    },
+    "vehicle": {
+      "href": "https://api.groupe-psa.com/connectedcar/v4/user/vehicles/vid"
+    }
+  },
+  "createdAt": "2024-08-01T09:00:00Z",
+  "updatedAt": "2024-08-01T10:15:30Z",
+  "ignition": {
+    "createdAt": "2024-08-01T09:00:00Z",
+    "type": "Stop"
+  },
+  "lastPosition": {
+    "type": "Feature",
+    "geometry": {
+      "type": "Point",
+      "coordinates": [
+        -25.6687,
+        37.7412,
+        40
+      ]
+    },
+    "properties": {
+      "createdAt": "2024-08-01T08:00:00Z",
+      "heading": 126,
+      "type": "Estimated"
+    }
+  },
+  "preconditioning": {
+    "airConditioning": {
+      "createdAt": "2024-08-01T09:00:00Z",
+      "status": "Disabled"
+    }
+  },
+  "energies": [
+    {
+      "createdAt": "2024-08-01T10:15:30Z",
+      "type": "Electric",
+      "subType": "ElectricEnergy",
+      "level": 61.5,
+      "autonomy": 131,
+      "extension": {
+        "electric": {
+          "charging": {
+            "plugged": true,
+            "status": "InProgress",
+            "remainingTime": "PT2H15M",
+            "chargingRate": 20,
+            "chargingPowerLevel": "Level2",
+            "chargingMode": "Slow",
+            "nextDelayedTime": "PT22H30M",
+            "type": "Partial",
+            "schedule": []
+          }
+        }
+      }
+    }
+  ],
+  "doorsState": {
+    "createdAt": "2024-08-01T10:00:00Z",
+    "lockedStates": [
+      "Locked"
+    ],
+    "opening": [
+      {
+        "identifier": "Driver",
+        "state": "Closed"
+      }
+    ]
+  },
+  "kinetic": {
+    "createdAt": "2024-08-01T09:00:00Z",
+    "moving": false
+  },
+  "odometer": {
+    "createdAt": "2024-08-01T09:00:00Z",
+    "mileage": 3196.5
+  }
+}

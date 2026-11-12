@@ -1,9 +1,25 @@
 """Tolerant models for the parts of the PSA connected car API (v4.17, see api-b2c-v4.17.2.yaml) we read.
 
 Everything is optional and unknown keys are ignored: the API evolves, and enums may grow, so enum-like
-values are kept as plain strings.
+values are kept as plain strings. Real cars also deviate from the spec (an e-208 returns `charging.schedule`
+as `[]`), so every field is `Lenient`: a wrong-typed value becomes None instead of rejecting the whole status.
 """
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from typing import Annotated, Any, TypeVar
+
+from pydantic import (BaseModel, ConfigDict, Field, ValidationError, ValidatorFunctionWrapHandler, WrapValidator,
+                      field_validator)
+
+T = TypeVar("T")
+
+
+def _none_if_invalid(value: Any, handler: ValidatorFunctionWrapHandler) -> Any:
+    try:
+        return handler(value)
+    except ValidationError:
+        return None
+
+
+Lenient = Annotated[T | None, WrapValidator(_none_if_invalid)]
 
 
 class _Model(BaseModel):
@@ -11,32 +27,32 @@ class _Model(BaseModel):
 
 
 class Charging(_Model):
-    plugged: bool | None = None
-    status: str | None = None  # Disconnected | InProgress | Failure | Stopped | Finished
-    remaining_time: str | None = Field(None, alias="remainingTime")
-    charging_rate: int | None = Field(None, alias="chargingRate")
-    charging_power_level: str | None = Field(None, alias="chargingPowerLevel")
-    charging_mode: str | None = Field(None, alias="chargingMode")
-    next_delayed_time: str | None = Field(None, alias="nextDelayedTime")
-    schedule: dict | None = None
+    plugged: Lenient[bool] = None
+    status: Lenient[str] = None  # Disconnected | InProgress | Failure | Stopped | Finished
+    remaining_time: Lenient[str] = Field(None, alias="remainingTime")
+    charging_rate: Lenient[int] = Field(None, alias="chargingRate")
+    charging_power_level: Lenient[str] = Field(None, alias="chargingPowerLevel")
+    charging_mode: Lenient[str] = Field(None, alias="chargingMode")
+    next_delayed_time: Lenient[str] = Field(None, alias="nextDelayedTime")
+    schedule: Any = None  # spec: object with programs; real cars: also []
 
 
 class _ElectricExtension(_Model):
-    charging: Charging | None = None
+    charging: Lenient[Charging] = None
 
 
 class _EnergyExtension(_Model):
-    electric: _ElectricExtension | None = None
+    electric: Lenient[_ElectricExtension] = None
 
 
 class Energy(_Model):
-    type: str | None = None  # Fuel | Electric
-    level: float | None = None
-    autonomy: float | None = None
-    updated_at: str | None = Field(None, alias="updatedAt")
-    created_at: str | None = Field(None, alias="createdAt")
-    charging: Charging | None = None  # legacy (deprecated `energy`) location
-    extension: _EnergyExtension | None = None  # v4.15.1+ location: extension.electric.charging
+    type: Lenient[str] = None  # Fuel | Electric
+    level: Lenient[float] = None
+    autonomy: Lenient[float] = None
+    updated_at: Lenient[str] = Field(None, alias="updatedAt")
+    created_at: Lenient[str] = Field(None, alias="createdAt")
+    charging: Lenient[Charging] = None  # legacy (deprecated `energy`) location
+    extension: Lenient[_EnergyExtension] = None  # v4.15.1+ location: extension.electric.charging
 
     def charging_info(self) -> Charging | None:
         ext = self.extension.electric.charging if self.extension and self.extension.electric else None
@@ -44,34 +60,34 @@ class Energy(_Model):
 
 
 class _Geometry(_Model):
-    coordinates: list[float | None] | None = None
+    coordinates: Lenient[list[Lenient[float]]] = None
 
 
 class _Position(_Model):
-    geometry: _Geometry | None = None
+    geometry: Lenient[_Geometry] = None
 
 
 class _DoorsState(_Model):
-    locked_states: list[str] | None = Field(None, alias="lockedStates")
+    locked_states: Lenient[list[str]] = Field(None, alias="lockedStates")
 
 
 class _AirConditioning(_Model):
-    status: str | None = None  # Enabled | Disabled | Finished | Failure
+    status: Lenient[str] = None  # Enabled | Disabled | Finished | Failure
 
 
 class _Preconditioning(_Model):
-    air_conditioning: _AirConditioning | None = Field(None, alias="airConditioning")
+    air_conditioning: Lenient[_AirConditioning] = Field(None, alias="airConditioning")
 
 
 class VehicleStatus(_Model):
-    energies: list[Energy] | None = None
-    energy: list[Energy] | None = None  # deprecated since v4.10.1
-    last_position: _Position | None = Field(None, alias="lastPosition")
-    doors_state: _DoorsState | None = Field(None, alias="doorsState")
-    preconditioning: _Preconditioning | None = None
-    preconditionning: _Preconditioning | None = None  # deprecated spelling
-    updated_at: str | None = Field(None, alias="updatedAt")
-    created_at: str | None = Field(None, alias="createdAt")
+    energies: Lenient[list[Lenient[Energy]]] = None
+    energy: Lenient[list[Lenient[Energy]]] = None  # deprecated since v4.10.1
+    last_position: Lenient[_Position] = Field(None, alias="lastPosition")
+    doors_state: Lenient[_DoorsState] = Field(None, alias="doorsState")
+    preconditioning: Lenient[_Preconditioning] = None
+    preconditionning: Lenient[_Preconditioning] = None  # deprecated spelling
+    updated_at: Lenient[str] = Field(None, alias="updatedAt")
+    created_at: Lenient[str] = Field(None, alias="createdAt")
 
     @field_validator("energy", mode="before")
     @classmethod
@@ -82,7 +98,7 @@ class VehicleStatus(_Model):
     def electric(self) -> Energy | None:
         for energies in (self.energies, self.energy):
             for energy in energies or []:
-                if energy.type == "Electric":
+                if energy is not None and energy.type == "Electric":
                     return energy
         return None
 
