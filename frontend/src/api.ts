@@ -149,3 +149,62 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
 export const apiGet = <T,>(path: string) => request<T>('GET', path)
 export const apiSend = <T,>(method: 'POST' | 'PUT' | 'DELETE' | 'PATCH', path: string, body?: unknown) =>
   request<T>(method, path, body)
+
+export interface ChargeSession {
+  id: number
+  started_at: string
+  ended_at: string | null
+  place_kind: 'home' | 'work' | 'other'
+  place_name: string | null
+  soc_start: number
+  soc_end: number | null
+  kwh: number | null
+  cost_eur: number | null // null = unknown price
+  price_override_eur_kwh: number | null
+  partial: boolean // session seen only in part: kWh and cost are approximate
+}
+
+export interface ChargeSample {
+  at: string
+  soc: number
+  rate_kmh: number | null
+}
+
+export interface ChargeSummary {
+  kwh: number
+  cost_eur: number // unknown-cost sessions count as 0
+  work_pct: number
+  home_pct: number
+  avg_home_eur_kwh: number | null
+}
+
+export interface Trip {
+  id: number
+  departed_at: string
+  arrived_at: string
+  from_kind: 'home' | 'work' | 'other'
+  from_name: string | null
+  to_kind: 'home' | 'work' | 'other'
+  to_name: string | null
+  from_lat: number | null
+  from_lon: number | null
+  to_lat: number | null
+  to_lon: number | null
+  km: number
+  soc_start: number | null
+  soc_end: number | null
+  kwh: number
+  kwh_100km: number
+}
+
+export interface ConsumptionMonth {
+  month: string // YYYY-MM
+  km: number
+  kwh: number
+  kwh_100km: number | null
+}
+
+export interface Consumption {
+  last30: { km: number; kwh: number; kwh_100km: number | null }
+  months: ConsumptionMonth[]
+}

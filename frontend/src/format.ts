@@ -26,3 +26,9 @@ export const fmtMinutes = (m: number): string =>
 
 /** Minutes since midnight as an input value (06:50, 24:00). */
 export const fmtClock = (m: number): string => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`
+
+const numFmt = new Intl.NumberFormat(LOCALE, { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+/** One decimal, pt-PT comma (15,2). */
+export const fmtNum = (n: number): string => numFmt.format(n)
+/** Date and hour: 12/11/2026 09h05. */
+export const fmtDateTime = (d: Date | string): string => `${fmtDate(d)} ${fmtHour(d)}`

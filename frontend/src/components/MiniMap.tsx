@@ -24,7 +24,7 @@ export function MiniMap({ markers, radiusM, onPick }: Props) {
   })
 
   useEffect(() => {
-    const m = L.map(el.current!, { center: [0, 0], zoom: 15 })
+    const m = L.map(el.current!, { center: [37.75, -25.67], zoom: 10 })
     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap' }).addTo(m)
     layer.current = L.layerGroup().addTo(m)
     m.on('click', (e: L.LeafletMouseEvent) => pick.current?.(e.latlng.lat, e.latlng.lng))
@@ -46,8 +46,12 @@ export function MiniMap({ markers, radiusM, onPick }: Props) {
     const m = map.current
     const g = layer.current
     const list = latest.current
-    if (!m || !g || list.length === 0) return
+    if (!m || !g) return
     g.clearLayers()
+    if (list.length === 0) {
+      m.setView([37.75, -25.67], 10)
+      return
+    }
     const points = list.map((p) => L.latLng(p.lat, p.lon))
     points.forEach((p) => L.circleMarker(p, { radius: 5 }).addTo(g))
     if (radiusM !== undefined) {
