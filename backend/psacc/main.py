@@ -3,6 +3,7 @@
 Run with ``uvicorn psacc.main:app``. Tests build their own app with ``create_app(db_url, gateway_factory)``.
 """
 
+import dataclasses
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -22,6 +23,7 @@ from .api import automation as automation_api
 from .api import control as control_api
 from .api import setup as setup_api
 from .api import status as status_api
+from .fake_gateway import FakeGateway, default_snapshot
 from .auth import LoginRateLimiter, require_login
 from .notify import DiscordNotifier, QueuedNotifier
 
@@ -50,6 +52,23 @@ class SpaStaticFiles(StaticFiles):
         return await super().get_response("index.html", scope)
 
 
+def _default_gateway_factory():
+    """The real PSA gateway, or an in-memory fake car when PSACC_FAKE=1 (UI development without a PSA account)."""
+    if os.environ.get("PSACC_FAKE") != "1":
+        return setup_flow.load_gateway
+    logger.warning("PSACC_FAKE=1: using a FAKE in-memory car, no PSA account is used. Never enable in production.")
+    snap = dataclasses.replace(
+        default_snapshot("FAKEVIN0000000000"),
+        soc=62.0,
+        range_km=118.0,
+        plugged=True,
+        latitude=37.7412,
+        longitude=-25.6756,
+    )
+    gateway = FakeGateway(snap, apply_effect=True)
+    return lambda: gateway
+
+
 def create_app(db_url: str | None = None, gateway_factory: GatewayFactory | None = None) -> FastAPI:
     store.init_db(db_url)  # also creates the config row with the session secret, before any request
     discord = DiscordNotifier(store.get_config)
@@ -57,7 +76,7 @@ def create_app(db_url: str | None = None, gateway_factory: GatewayFactory | None
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         notifier = QueuedNotifier(discord)
-        init_state(app, gateway_factory or setup_flow.load_gateway, notifier)
+        init_state(app, gateway_factory or _default_gateway_factory(), notifier)
         start_car(app)
         try:
             yield

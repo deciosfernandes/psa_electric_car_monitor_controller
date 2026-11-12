@@ -23,6 +23,11 @@ class PasswordIn(BaseModel):
     password: str = Field(max_length=MAX_PASSWORD_LEN)  # scrypt cost must not depend on attacker-sized input
 
 
+class PasswordChangeIn(BaseModel):
+    current: str = Field(max_length=MAX_PASSWORD_LEN)
+    new: str = Field(max_length=MAX_PASSWORD_LEN)
+
+
 @router.get("/state")
 def auth_state(request: Request) -> dict:
     return {"configured": store.get_config().password_hash is not None, "logged_in": is_logged_in(request)}
@@ -59,6 +64,30 @@ def login(body: PasswordIn, request: Request) -> dict:
         raise HTTPException(401, "Palavra-passe incorreta")
     request.session.clear()
     request.session[SESSION_KEY] = True
+    return {"ok": True}
+
+
+@router.post("/password")
+def change_password(body: PasswordChangeIn, request: Request) -> dict:
+    if not is_logged_in(request):
+        raise HTTPException(401, "Sessão inválida, inicie sessão")
+    if len(body.new) < MIN_PASSWORD_LEN:
+        raise HTTPException(422, f"A palavra-passe tem de ter pelo menos {MIN_PASSWORD_LEN} caracteres")
+    limiter: LoginRateLimiter = request.app.state.login_limiter
+    cfg = store.get_config()
+    if cfg.password_hash is None:
+        raise HTTPException(409, "A palavra-passe ainda não foi definida")
+    if not limiter.try_acquire():
+        raise HTTPException(429, "Demasiadas tentativas falhadas. Tente novamente dentro de 5 minutos.")
+    ok = False
+    try:
+        ok = verify_password(body.current, cfg.password_hash)
+    finally:
+        limiter.release(ok)
+    if not ok:
+        raise HTTPException(401, "Palavra-passe atual incorreta")
+    cfg.password_hash = hash_password(body.new)
+    store.save_config(cfg)
     return {"ok": True}
 
 

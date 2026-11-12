@@ -3,12 +3,12 @@ import { BrowserRouter, Route, Routes } from 'react-router'
 import { Shell } from './layout/Shell'
 import ComingSoon from './pages/ComingSoon'
 import Automacao from './pages/Automacao'
+import Controlo from './pages/Controlo'
+import Definicoes from './pages/Definicoes'
 import Login from './pages/Login'
 import Painel from './pages/Painel'
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } } })
-
-const WIP = 'Em construção'
 
 export default function App() {
   return (
@@ -22,8 +22,8 @@ export default function App() {
             <Route path="cargas" element={<ComingSoon title="Cargas" />} />
             <Route path="viagens" element={<ComingSoon title="Viagens" />} />
             <Route path="consumo" element={<ComingSoon title="Consumo" />} />
-            <Route path="controlo" element={<ComingSoon title="Controlo" message={WIP} />} />
-            <Route path="definicoes" element={<ComingSoon title="Definições" message={WIP} />} />
+            <Route path="controlo" element={<Controlo />} />
+            <Route path="definicoes" element={<Definicoes />} />
           </Route>
         </Routes>
       </BrowserRouter>

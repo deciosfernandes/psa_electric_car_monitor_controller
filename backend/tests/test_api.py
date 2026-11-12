@@ -120,6 +120,34 @@ def test_password_length_limits(client):
     assert client.post("/api/auth/login", json={"password": "x" * 5000}).status_code == 422
 
 
+def test_change_password(logged):
+    assert logged.post("/api/auth/password", json={"current": "errada!!!", "new": "novasenha1"}).status_code == 401
+    assert logged.post("/api/auth/password", json={"current": PASSWORD, "new": "curta"}).status_code == 422
+    assert logged.post("/api/auth/password", json={"current": PASSWORD, "new": "x" * 1025}).status_code == 422
+    assert logged.post("/api/auth/password", json={"current": PASSWORD, "new": "novasenha1"}).status_code == 200
+    logged.post("/api/auth/logout")
+    assert logged.post("/api/auth/login", json={"password": PASSWORD}).status_code == 401
+    assert logged.post("/api/auth/login", json={"password": "novasenha1"}).status_code == 200
+
+
+def test_change_password_requires_login_and_is_rate_limited(client):
+    assert client.post("/api/auth/password", json={"current": "a", "new": "novasenha1"}).status_code == 401
+    client.post("/api/auth/setup", json={"password": PASSWORD})
+    for _ in range(MAX_FAILURES):
+        assert client.post("/api/auth/password", json={"current": "errada!!!", "new": "novasenha1"}).status_code == 401
+    assert client.post("/api/auth/password", json={"current": PASSWORD, "new": "novasenha1"}).status_code == 429
+
+
+def test_fake_mode_uses_fake_gateway(monkeypatch):
+    monkeypatch.setenv("PSACC_FAKE", "1")
+    with make_client(gateway_factory=None) as c:
+        c.post("/api/auth/setup", json={"password": PASSWORD})
+        # (the first poll waits for the wakeup settle delay, so check the gateway rather than the status snapshot)
+        assert c.get("/api/setup/state").json()["psa_connected"] is True
+        assert c.post("/api/control/horn").json()["ok"] is True
+        assert c.app.state.gateway.snapshot().vin.startswith("FAKE")
+
+
 def test_csrf_header_required_for_state_changes():
     with make_client(csrf=False) as c:
         r = c.post("/api/auth/setup", json={"password": PASSWORD})

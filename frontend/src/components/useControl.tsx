@@ -15,11 +15,13 @@ interface ToastState {
 export function useControl(): {
   run: (key: string, path: string, body?: unknown) => Promise<void>
   pending: string | null
+  last: { key: string; ok: boolean; message: string } | null
   toast: ReactNode
 } {
   const qc = useQueryClient()
   const [pending, setPending] = useState<string | null>(null)
   const [toast, setToast] = useState<ToastState | null>(null)
+  const [last, setLast] = useState<{ key: string; ok: boolean; message: string } | null>(null)
 
   useEffect(() => {
     if (!toast) return
@@ -32,8 +34,11 @@ export function useControl(): {
     try {
       const res = await apiSend<ControlResult>('POST', path, body ?? {})
       setToast({ message: res.message, ok: res.ok })
+      setLast({ key, ok: res.ok, message: res.message })
     } catch (e) {
-      setToast({ message: e instanceof Error ? e.message : 'Erro inesperado', ok: false })
+      const message = e instanceof Error ? e.message : 'Erro inesperado'
+      setToast({ message, ok: false })
+      setLast({ key, ok: false, message })
     } finally {
       setPending(null)
       void qc.invalidateQueries({ queryKey: ['status'] })
@@ -51,5 +56,5 @@ export function useControl(): {
       {toast.message}
     </div>
   )
-  return { run, pending, toast: node }
+  return { run, pending, last, toast: node }
 }
