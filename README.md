@@ -83,6 +83,9 @@ Obrigatório **uma vez**, com o carro ligado à tomada e a bateria abaixo do lim
 de inverno (quando os Açores estão em UTC−1, o teste do fuso é conclusivo). Demora 20–60 min, porque a PSA
 limita os pedidos para acordar o carro.
 
+**Pare a aplicação antes** (`docker compose down`): o script e a aplicação não podem usar as mesmas
+credenciais da PSA ao mesmo tempo.
+
 ```bash
 cd backend
 python -m venv .venv
