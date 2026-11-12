@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 import json
 import logging
-import traceback
 
 import requests
 
@@ -38,6 +37,7 @@ class InitialSetup:
         self.country_code = country_code
         self.user_info = None
         self.customer_id = None
+        res = None
         try:
             res = requests.post(apk_parser.host_brandid_prod + "/GetAccessToken",
                                 headers={
@@ -59,16 +59,12 @@ class InitialSetup:
             elif token := data.get("token"):
                 self.token = token
             else:
-                raise ConnectionError("No access token in response:", res.text)
+                raise ConnectionError(f"No access token in response (HTTP {res.status_code})")
         except ConnectionError as e:
             raise e
         except Exception as ex:
-            msg = traceback.format_exc() + f"\nHOST_BRANDID : {apk_parser.host_brandid_prod} " \
-                f"sitecode: {apk_parser.site_code}"
-            try:
-                msg += res.text
-            except BaseException:
-                pass
+            # never the response body: it can carry personal data or tokens
+            msg = f"brand id login failed: HTTP {getattr(res, 'status_code', None)} ({type(ex).__name__})"
             logger.error(msg)
             raise ConnectionError(msg) from ex
 
@@ -81,6 +77,7 @@ class InitialSetup:
                                self.country_code, BRAND[self.package_name]["brand_code"])
 
     def __fetch_user_info(self):
+        res2 = None
         try:
             res2 = requests.post(
                 f"https://mw-{BRAND[self.package_name]['brand_code'].lower()}-m2c.mym.awsmpsa.com/api/v1/user",
@@ -104,11 +101,8 @@ class InitialSetup:
 
             res_dict = res2.json()["success"]
         except Exception as ex:
-            msg = traceback.format_exc()
-            try:
-                msg += res2.text
-            except BaseException:
-                pass
+            # never the response body: it is the user's profile
+            msg = f"user info request failed: HTTP {getattr(res2, 'status_code', None)} ({type(ex).__name__})"
             logger.error(msg)
             raise ConnectionError(msg) from ex
         return res_dict

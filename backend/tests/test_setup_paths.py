@@ -83,3 +83,29 @@ def test_get_content_from_apk_uses_absolute_path(data_dir, monkeypatch):
     monkeypatch.setattr(app_decoder, "ApkParser", FakeParser)
     app_decoder.get_content_from_apk("mypeugeot.apk", "PT")
     assert seen["filename"] == str(data_dir.resolve() / "apk" / "mypeugeot.apk")
+
+
+def test_user_info_failure_logs_status_and_type_only(monkeypatch, caplog):
+    """R5: PSA's response body (personal data, tokens) never reaches the logs or the raised error."""
+    import logging
+
+    import pytest
+
+    class BadResponse:
+        status_code = 500
+        text = "SECRET-BODY john@example.com"
+
+        def json(self):
+            raise ValueError("not json SECRET-BODY")
+
+    monkeypatch.setattr(app_decoder.requests, "post", lambda *a, **kw: BadResponse())
+    monkeypatch.setattr(app_decoder, "cert_paths", lambda: None)
+    setup = object.__new__(app_decoder.InitialSetup)
+    setup.package_name, setup.culture, setup.version = "com.psa.mym.mypeugeot", "pt-PT", "1"
+    setup.site_code, setup.token = "site", "tok-SECRET"
+    caplog.set_level(logging.DEBUG)
+    with pytest.raises(ConnectionError) as err:
+        setup._InitialSetup__fetch_user_info()
+    assert "500" in caplog.text and "ValueError" in caplog.text
+    for leak in ("SECRET-BODY", "john@example.com", "tok-SECRET"):
+        assert leak not in caplog.text and leak not in str(err.value)
