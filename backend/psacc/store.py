@@ -263,6 +263,8 @@ def save_psa(d: dict) -> None:
     fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "w", encoding="utf-8") as f:
         json.dump(d, f)
+        f.flush()
+        os.fsync(f.fileno())  # tokens rotate: a power cut must not leave a spent or empty psa.json
     os.replace(tmp, path)
 
 

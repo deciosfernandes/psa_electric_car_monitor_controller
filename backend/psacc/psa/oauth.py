@@ -93,10 +93,6 @@ class OpenIdCredentialManager(CredentialManager):
         for attempt in range(1, max_attempts + 1):
             try:
                 self._refresh_token()
-                logger.info("access token refreshed")
-                self.auth_failed = False
-                for refresh_callback in self.refresh_callbacks:
-                    refresh_callback()
                 return True
             except OAuthError as e:
                 logger.error("Can't refresh token: %s", e)
@@ -111,6 +107,22 @@ class OpenIdCredentialManager(CredentialManager):
                 else:
                     logger.error("Can't refresh token: %s", e)
         return False
+
+    def _refresh_token(self):
+        # also reached from the library's _bearer_request on a 401 "Token is invalid", outside
+        # refresh_token_now(): every rotation must be logged and persisted, or a restart reuses a spent token
+        super()._refresh_token()
+        logger.info("access token refreshed")
+        self.auth_failed = False
+        for refresh_callback in self.refresh_callbacks:
+            refresh_callback()
+
+    def _process_token_response(self, token_response: dict, refresh_token_mandatory: bool):
+        # the library sets refresh_token to None when a response omits it; that None would then be saved
+        previous = self.refresh_token
+        super()._process_token_response(token_response, refresh_token_mandatory)
+        if self.refresh_token is None:
+            self.refresh_token = previous
 
     def request(self, method, url, **kwargs):  # pylint: disable=W0221
         if "timeout" not in kwargs:

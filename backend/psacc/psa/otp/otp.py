@@ -315,6 +315,8 @@ def save_otp(obj, filename=None):
     fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, 'wb') as output:
         pickle.dump(obj, output)
+        output.flush()
+        os.fsync(output.fileno())  # survive a power cut (the OTP counter must not roll back)
     os.replace(tmp, filename)
 
 
