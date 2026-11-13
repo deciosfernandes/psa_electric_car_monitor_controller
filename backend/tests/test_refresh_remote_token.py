@@ -183,9 +183,11 @@ class TestAuthFailedFlag(unittest.TestCase):
 
         manager = OpenIdCredentialManager(ServiceInformation("https://a", "https://t", "id", "secret", ["openid"]))
         rejected = OAuthError(HTTPStatus.UNAUTHORIZED, "invalid_grant", "")
-        with mock.patch.object(manager, "_refresh_token", side_effect=rejected):
+        manager.refresh_token = "r0"
+        with mock.patch.object(manager, "_token_request", side_effect=rejected):
             self.assertFalse(manager.refresh_token_now())
         self.assertTrue(manager.auth_failed)
-        with mock.patch.object(manager, "_refresh_token"):
+        manager.refresh_token = "r1"  # the user logged in again
+        with mock.patch.object(manager, "_token_request"):
             self.assertTrue(manager.refresh_token_now())
         self.assertFalse(manager.auth_failed)
