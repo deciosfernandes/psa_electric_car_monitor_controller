@@ -834,9 +834,9 @@ def test_manual_charge_at_work_after_episode_charge():
 
 
 def test_engine_records_one_health_sample_per_day():
-    engine, gw, *_ = make(car=snap(battery_health=93.0))
+    engine, gw, *_ = make(car=snap(at=thu(19), battery_health=93.0))
     engine.on_status(gw.snap)
-    gw.snap = snap(battery_health=92.5)
+    gw.snap = snap(at=thu(19, 30), battery_health=92.5)
     engine.on_status(gw.snap)
     assert store.health_samples() == [(thu(19).astimezone(TZ).date(), 92.5)]
 
